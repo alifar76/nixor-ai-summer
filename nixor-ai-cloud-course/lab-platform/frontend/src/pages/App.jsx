@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "../api";
 import { AuthForm } from "../components/AuthForm";
@@ -20,10 +20,12 @@ export function App() {
   const [banner, setBanner] = useState("");
   const [leftPct, setLeftPct] = useState(28);
   const [centerPct, setCenterPct] = useState(44);
-  const [editorPct, setEditorPct] = useState(68);
+  const [editorPct, setEditorPct] = useState(60);
   const [isNarrow, setIsNarrow] = useState(
     typeof window !== "undefined" ? window.innerWidth <= 1200 : false
   );
+  const mainRef = useRef(null);
+  const centerRef = useRef(null);
 
   const completedSet = useMemo(() => new Set(completed), [completed]);
 
@@ -98,14 +100,17 @@ export function App() {
 
   function startColumnResize(edge) {
     const onMove = (evt) => {
-      const width = window.innerWidth;
-      const xPct = (evt.clientX / width) * 100;
+      const main = mainRef.current;
+      if (!main) return;
+      const rect = main.getBoundingClientRect();
+      const x = Math.max(0, Math.min(rect.width, evt.clientX - rect.left));
+      const xPct = (x / rect.width) * 100;
       if (edge === "left") {
-        const nextLeft = Math.max(16, Math.min(60, xPct));
+        const nextLeft = Math.max(14, Math.min(60, xPct));
         const maxLeft = 84 - centerPct;
         setLeftPct(Math.min(nextLeft, maxLeft));
       } else {
-        const nextCenter = Math.max(24, Math.min(66, xPct - leftPct));
+        const nextCenter = Math.max(22, Math.min(68, xPct - leftPct));
         const maxCenter = 84 - leftPct;
         setCenterPct(Math.min(nextCenter, maxCenter));
       }
@@ -122,14 +127,15 @@ export function App() {
     document.addEventListener("mouseup", onUp);
   }
 
-  function startRowResize() {
+  function startRowResize(evt) {
+    evt.preventDefault();
     const onMove = (evt) => {
-      const main = document.querySelector("main");
-      if (!main) return;
-      const rect = main.getBoundingClientRect();
+      const center = centerRef.current;
+      if (!center) return;
+      const rect = center.getBoundingClientRect();
       const y = evt.clientY - rect.top;
       const next = (y / rect.height) * 100;
-      setEditorPct(Math.max(35, Math.min(82, next)));
+      setEditorPct(Math.max(25, Math.min(85, next)));
     };
 
     const onUp = () => {
@@ -171,6 +177,7 @@ export function App() {
       {banner && <div className="banner">{banner}</div>}
 
       <main
+        ref={mainRef}
         style={
           isNarrow
             ? undefined
@@ -196,6 +203,7 @@ export function App() {
         )}
 
         <div
+          ref={centerRef}
           className="center-col"
           style={
             isNarrow
