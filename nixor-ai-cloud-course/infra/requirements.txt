@@ -1,0 +1,4 @@
+# Provisioning shells out to the Azure CLI (`az`), which must be installed and
+# authenticated. These are only needed if you extend provisioning with the SDK.
+azure-identity>=1.17
+azure-mgmt-resource>=23.0
