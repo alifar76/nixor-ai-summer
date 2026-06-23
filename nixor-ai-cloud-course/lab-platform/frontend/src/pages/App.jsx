@@ -129,24 +129,31 @@ export function App() {
 
   function startRowResize(evt) {
     evt.preventDefault();
-    const onMove = (evt) => {
-      const center = centerRef.current;
-      if (!center) return;
-      const rect = center.getBoundingClientRect();
-      const y = evt.clientY - rect.top;
-      const next = (y / rect.height) * 100;
-      setEditorPct(Math.max(25, Math.min(85, next)));
+    const center = centerRef.current;
+    if (!center) return;
+
+    const rect = center.getBoundingClientRect();
+    const startY = evt.clientY;
+    const startPct = editorPct;
+
+    const onMove = (moveEvt) => {
+      const deltaPx = moveEvt.clientY - startY;
+      const deltaPct = (deltaPx / rect.height) * 100;
+      const nextPct = startPct + deltaPct;
+      setEditorPct(Math.max(22, Math.min(88, nextPct)));
     };
 
     const onUp = () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("blur", onUp);
       document.body.classList.remove("resizing");
     };
 
     document.body.classList.add("resizing");
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    window.addEventListener("blur", onUp);
   }
 
   if (!ready) {
