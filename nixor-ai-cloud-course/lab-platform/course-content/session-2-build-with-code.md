@@ -1,21 +1,28 @@
-# Session 2 — Build It Yourself
+# Session 2 — Build Core Product Skills
 
-**Goal:** stop using a ready-made app and build your *own* with a few lines of Python.
+**Goal:** turn the starter bot into a purposeful product with better UX and better prompting.
 
-## Key ideas
-- **API / SDK** — how your code talks to the AI model over the internet.
-- **System prompt** — the AI's job description. Change this and you change everything.
-- **Secrets** — your API key is a password. It goes in settings, NEVER in your code.
-- **Tokens** — the AI reads and writes in chunks called tokens. Tokens cost money. Cheap
-  here, but real — this is why we use the small, fast `gpt-4o-mini`.
+## Big ideas for today
+- **Prompt design is product design**: instructions shape behavior.
+- **State and interaction**: better apps remember context and guide users.
+- **Debugging discipline**: inspect, isolate, test, then fix.
 
 ## Steps
-1. Open your **Codespace** (browser VS Code, already set up).
-2. Open `student-app/app.py`. Find the two lines marked `# 👈 EDIT THIS`.
-3. Change `APP_TITLE` and `SYSTEM_PROMPT` to invent your app: a Physics study buddy, a
-   Karachi food guide, a debate coach — your call. This is now *your* app.
-4. Run `streamlit run app.py` and chat with your creation in the preview window.
+1. **Define your app mission**: choose one audience and one clear job your app will do.
+2. **Rewrite system behavior**: update `APP_TITLE` and `SYSTEM_PROMPT` for that mission.
+3. **Add one UI improvement**: for example mode selector, response style switch, or predefined prompt buttons.
+4. **Test with structured prompts**: run at least 5 prompts (easy, ambiguous, adversarial, off-topic, edge case).
+5. **Use chatbot as pair programmer**: ask it for a minimal diff, not a full rewrite, then apply and test.
+6. **Refactor one section**: move repeated logic into a helper function and name it clearly.
+7. **Write a quality checklist**: correctness, clarity, safety, and failure behavior.
+
+## Starter track
+- Implement one new UI control.
+- Improve prompt and pass 3 test prompts.
+
+## Stretch track
+- Add a second feature (example: context mode, guardrail behavior, or richer output formatting).
+- Explain a failure mode and your mitigation.
 
 ## You learned
-How an app calls an AI model, how a system prompt shapes behaviour, why keys are secret,
-and why tokens cost money.
+How to evolve a simple script into a user-facing AI product with intentional behavior.

@@ -132,27 +132,46 @@ export function App() {
     const center = centerRef.current;
     if (!center) return;
 
+    const HANDLE_PX = 10;
+    const MIN_EDITOR_PX = 140;
+    const MIN_TERMINAL_PX = 140;
+
     const rect = center.getBoundingClientRect();
+    const centerHeight = rect.height;
     const startY = evt.clientY;
-    const startPct = editorPct;
+    const startEditorPx = (editorPct / 100) * centerHeight;
+
+    const handle = evt.currentTarget;
+    if (handle.setPointerCapture && typeof evt.pointerId === "number") {
+      handle.setPointerCapture(evt.pointerId);
+    }
 
     const onMove = (moveEvt) => {
       const deltaPx = moveEvt.clientY - startY;
-      const deltaPct = (deltaPx / rect.height) * 100;
-      const nextPct = startPct + deltaPct;
-      setEditorPct(Math.max(22, Math.min(88, nextPct)));
+      const maxEditorPx = Math.max(MIN_EDITOR_PX, centerHeight - MIN_TERMINAL_PX - HANDLE_PX);
+      const nextEditorPx = Math.max(MIN_EDITOR_PX, Math.min(maxEditorPx, startEditorPx + deltaPx));
+      setEditorPct((nextEditorPx / centerHeight) * 100);
     };
 
-    const onUp = () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
+    const onUp = (upEvt) => {
+      if (handle.releasePointerCapture && typeof upEvt.pointerId === "number") {
+        try {
+          handle.releasePointerCapture(upEvt.pointerId);
+        } catch {
+          // No-op: capture may already be gone.
+        }
+      }
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
       window.removeEventListener("blur", onUp);
       document.body.classList.remove("resizing");
     };
 
     document.body.classList.add("resizing");
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
     window.addEventListener("blur", onUp);
   }
 
@@ -229,7 +248,7 @@ export function App() {
           {!isNarrow && (
             <div
               className="resize-handle horizontal"
-              onMouseDown={startRowResize}
+              onPointerDown={startRowResize}
               title="Drag to resize editor and terminal"
             />
           )}
