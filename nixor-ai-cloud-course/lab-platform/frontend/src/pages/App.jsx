@@ -18,6 +18,12 @@ export function App() {
   const [content, setContent] = useState("");
   const [loadingFile, setLoadingFile] = useState(false);
   const [banner, setBanner] = useState("");
+  const [leftPct, setLeftPct] = useState(28);
+  const [centerPct, setCenterPct] = useState(44);
+  const [editorPct, setEditorPct] = useState(68);
+  const [isNarrow, setIsNarrow] = useState(
+    typeof window !== "undefined" ? window.innerWidth <= 1200 : false
+  );
 
   const completedSet = useMemo(() => new Set(completed), [completed]);
 
@@ -45,6 +51,12 @@ export function App() {
     }
     bootstrap().catch(() => api.setToken(""))
       .finally(() => setReady(true));
+  }, []);
+
+  useEffect(() => {
+    const onResize = () => setIsNarrow(window.innerWidth <= 1200);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
   }, []);
 
   async function handleAuth({ mode, email, password, name, accessCode }) {
@@ -84,6 +96,53 @@ export function App() {
     await api.chat(messages, context, onDelta);
   }
 
+  function startColumnResize(edge) {
+    const onMove = (evt) => {
+      const width = window.innerWidth;
+      const xPct = (evt.clientX / width) * 100;
+      if (edge === "left") {
+        const nextLeft = Math.max(16, Math.min(60, xPct));
+        const maxLeft = 84 - centerPct;
+        setLeftPct(Math.min(nextLeft, maxLeft));
+      } else {
+        const nextCenter = Math.max(24, Math.min(66, xPct - leftPct));
+        const maxCenter = 84 - leftPct;
+        setCenterPct(Math.min(nextCenter, maxCenter));
+      }
+    };
+
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.classList.remove("resizing");
+    };
+
+    document.body.classList.add("resizing");
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }
+
+  function startRowResize() {
+    const onMove = (evt) => {
+      const main = document.querySelector("main");
+      if (!main) return;
+      const rect = main.getBoundingClientRect();
+      const y = evt.clientY - rect.top;
+      const next = (y / rect.height) * 100;
+      setEditorPct(Math.max(35, Math.min(82, next)));
+    };
+
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.classList.remove("resizing");
+    };
+
+    document.body.classList.add("resizing");
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }
+
   if (!ready) {
     return <div className="loading">Loading...</div>;
   }
@@ -94,6 +153,7 @@ export function App() {
 
   const total = course.reduce((n, s) => n + (s.steps?.length || 0), 0);
   const progressPct = total > 0 ? Math.round((completed.length / total) * 100) : 0;
+  const rightPct = Math.max(16, 100 - leftPct - centerPct);
 
   return (
     <div className="app-shell">
@@ -110,7 +170,13 @@ export function App() {
 
       {banner && <div className="banner">{banner}</div>}
 
-      <main>
+      <main
+        style={
+          isNarrow
+            ? undefined
+            : { gridTemplateColumns: `${leftPct}fr 10px ${centerPct}fr 10px ${rightPct}fr` }
+        }
+      >
         <div className="left-col">
           <CoursePanel
             sessions={course}
@@ -121,7 +187,22 @@ export function App() {
           />
         </div>
 
-        <div className="center-col">
+        {!isNarrow && (
+          <div
+            className="resize-handle vertical"
+            onMouseDown={() => startColumnResize("left")}
+            title="Drag to resize panels"
+          />
+        )}
+
+        <div
+          className="center-col"
+          style={
+            isNarrow
+              ? undefined
+              : { gridTemplateRows: `${editorPct}fr 10px ${Math.max(18, 100 - editorPct)}fr` }
+          }
+        >
           <EditorPanel
             files={files}
             selectedFile={selectedFile}
@@ -130,8 +211,23 @@ export function App() {
             onChangeContent={setContent}
             onSave={saveFile}
           />
+          {!isNarrow && (
+            <div
+              className="resize-handle horizontal"
+              onMouseDown={startRowResize}
+              title="Drag to resize editor and terminal"
+            />
+          )}
           <TerminalPanel token={api.token} />
         </div>
+
+        {!isNarrow && (
+          <div
+            className="resize-handle vertical"
+            onMouseDown={() => startColumnResize("center")}
+            title="Drag to resize panels"
+          />
+        )}
 
         <div className="right-col">
           <ChatPanel onSend={sendChat} />
