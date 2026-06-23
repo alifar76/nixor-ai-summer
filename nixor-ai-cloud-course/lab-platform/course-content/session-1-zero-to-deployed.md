@@ -1,22 +1,29 @@
-# Session 1 — Zero to a Live AI App
+# Session 1 — From Zero to First Live Deployment
 
-**Goal:** by the end you'll have an AI chat app live on the internet with a public link.
+**Goal:** deploy your first real AI app and understand what each cloud piece does.
 
-## What's the cloud, really?
-You can't run a giant AI model on your laptop — it needs more compute than any phone or
-laptop has. So instead of *owning* that hardware, you *rent* it, by the second, from a
-data centre. That's the cloud. Today you'll rent a tiny slice of Microsoft Azure.
-
-## Key ideas
-- **Region** — which city's data centre your stuff runs in (and where your data lives).
-- **Resource group** — a folder that holds all the pieces of one project.
-- **Endpoint + key** — the address of your AI model, and the secret password to use it.
+## Big ideas for today
+- **Cloud compute**: your code runs on remote infrastructure, not your laptop.
+- **Resource group**: a project container for everything your app needs.
+- **Endpoint + key**: how your app reaches an AI model securely.
+- **Deployment loop**: change code -> run -> verify -> repeat.
 
 ## Steps
-1. Open your sandbox in the Azure portal. Find your **resource group** and look inside.
-2. Open the **AI playground** and chat with gpt-4o-mini. Try changing its instructions.
-3. Deploy the **ready-made chat app**: follow the one-click flow on the site. Wait for it
-   to finish, then open your **public URL**. 🎉 You just deployed an AI app.
+1. **Map your architecture**: identify the frontend app, backend runtime, and AI model endpoint in your own words.
+2. **Inspect the starter app**: open `app.py` and find where user input, model call, and model output happen.
+3. **Run locally first**: in terminal, run `streamlit run app.py`, test 2 prompts, and note response quality.
+4. **Understand your secrets flow**: explain why API keys belong in environment variables, not source code.
+5. **Deploy to Azure Web App**: run the provided deployment command for your assigned app/resource group.
+6. **Verify production behavior**: open your live URL and compare local vs deployed behavior.
+7. **Record your first ship log**: write 3 lines: what worked, what broke, what you fixed.
+
+## Starter track (if new to coding)
+- Change only app title and one prompt instruction.
+- Validate deployment and capture one screenshot of your live app.
+
+## Stretch track (if experienced)
+- Add one input control (mode selector or temperature-like behavior).
+- Explain trade-offs between speed, cost, and output quality.
 
 ## You learned
-What the cloud is, what a region/resource group/endpoint are, and what "deploying" means.
+How a cloud AI app is structured, why secret management matters, and how to ship version 1 quickly.

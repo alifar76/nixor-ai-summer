@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "../api";
 import { AuthForm } from "../components/AuthForm";
@@ -18,6 +18,14 @@ export function App() {
   const [content, setContent] = useState("");
   const [loadingFile, setLoadingFile] = useState(false);
   const [banner, setBanner] = useState("");
+  const [leftPct, setLeftPct] = useState(28);
+  const [centerPct, setCenterPct] = useState(44);
+  const [editorPct, setEditorPct] = useState(60);
+  const [isNarrow, setIsNarrow] = useState(
+    typeof window !== "undefined" ? window.innerWidth <= 1200 : false
+  );
+  const mainRef = useRef(null);
+  const centerRef = useRef(null);
 
   const completedSet = useMemo(() => new Set(completed), [completed]);
 
@@ -45,6 +53,12 @@ export function App() {
     }
     bootstrap().catch(() => api.setToken(""))
       .finally(() => setReady(true));
+  }, []);
+
+  useEffect(() => {
+    const onResize = () => setIsNarrow(window.innerWidth <= 1200);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
   }, []);
 
   async function handleAuth({ mode, email, password, name, accessCode }) {
@@ -84,6 +98,83 @@ export function App() {
     await api.chat(messages, context, onDelta);
   }
 
+  function startColumnResize(edge) {
+    const onMove = (evt) => {
+      const main = mainRef.current;
+      if (!main) return;
+      const rect = main.getBoundingClientRect();
+      const x = Math.max(0, Math.min(rect.width, evt.clientX - rect.left));
+      const xPct = (x / rect.width) * 100;
+      if (edge === "left") {
+        const nextLeft = Math.max(14, Math.min(60, xPct));
+        const maxLeft = 84 - centerPct;
+        setLeftPct(Math.min(nextLeft, maxLeft));
+      } else {
+        const nextCenter = Math.max(22, Math.min(68, xPct - leftPct));
+        const maxCenter = 84 - leftPct;
+        setCenterPct(Math.min(nextCenter, maxCenter));
+      }
+    };
+
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.classList.remove("resizing");
+    };
+
+    document.body.classList.add("resizing");
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }
+
+  function startRowResize(evt) {
+    evt.preventDefault();
+    const center = centerRef.current;
+    if (!center) return;
+
+    const HANDLE_PX = 10;
+    const MIN_EDITOR_PX = 140;
+    const MIN_TERMINAL_PX = 140;
+
+    const rect = center.getBoundingClientRect();
+    const centerHeight = rect.height;
+    const startY = evt.clientY;
+    const startEditorPx = (editorPct / 100) * centerHeight;
+
+    const handle = evt.currentTarget;
+    if (handle.setPointerCapture && typeof evt.pointerId === "number") {
+      handle.setPointerCapture(evt.pointerId);
+    }
+
+    const onMove = (moveEvt) => {
+      const deltaPx = moveEvt.clientY - startY;
+      const maxEditorPx = Math.max(MIN_EDITOR_PX, centerHeight - MIN_TERMINAL_PX - HANDLE_PX);
+      const nextEditorPx = Math.max(MIN_EDITOR_PX, Math.min(maxEditorPx, startEditorPx + deltaPx));
+      setEditorPct((nextEditorPx / centerHeight) * 100);
+    };
+
+    const onUp = (upEvt) => {
+      if (handle.releasePointerCapture && typeof upEvt.pointerId === "number") {
+        try {
+          handle.releasePointerCapture(upEvt.pointerId);
+        } catch {
+          // No-op: capture may already be gone.
+        }
+      }
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      window.removeEventListener("blur", onUp);
+      document.body.classList.remove("resizing");
+    };
+
+    document.body.classList.add("resizing");
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    window.addEventListener("blur", onUp);
+  }
+
   if (!ready) {
     return <div className="loading">Loading...</div>;
   }
@@ -94,6 +185,7 @@ export function App() {
 
   const total = course.reduce((n, s) => n + (s.steps?.length || 0), 0);
   const progressPct = total > 0 ? Math.round((completed.length / total) * 100) : 0;
+  const rightPct = Math.max(16, 100 - leftPct - centerPct);
 
   return (
     <div className="app-shell">
@@ -110,7 +202,14 @@ export function App() {
 
       {banner && <div className="banner">{banner}</div>}
 
-      <main>
+      <main
+        ref={mainRef}
+        style={
+          isNarrow
+            ? undefined
+            : { gridTemplateColumns: `${leftPct}fr 10px ${centerPct}fr 10px ${rightPct}fr` }
+        }
+      >
         <div className="left-col">
           <CoursePanel
             sessions={course}
@@ -121,7 +220,23 @@ export function App() {
           />
         </div>
 
-        <div className="center-col">
+        {!isNarrow && (
+          <div
+            className="resize-handle vertical"
+            onMouseDown={() => startColumnResize("left")}
+            title="Drag to resize panels"
+          />
+        )}
+
+        <div
+          ref={centerRef}
+          className="center-col"
+          style={
+            isNarrow
+              ? undefined
+              : { gridTemplateRows: `${editorPct}fr 10px ${Math.max(18, 100 - editorPct)}fr` }
+          }
+        >
           <EditorPanel
             files={files}
             selectedFile={selectedFile}
@@ -130,8 +245,23 @@ export function App() {
             onChangeContent={setContent}
             onSave={saveFile}
           />
+          {!isNarrow && (
+            <div
+              className="resize-handle horizontal"
+              onPointerDown={startRowResize}
+              title="Drag to resize editor and terminal"
+            />
+          )}
           <TerminalPanel token={api.token} />
         </div>
+
+        {!isNarrow && (
+          <div
+            className="resize-handle vertical"
+            onMouseDown={() => startColumnResize("center")}
+            title="Drag to resize panels"
+          />
+        )}
 
         <div className="right-col">
           <ChatPanel onSend={sendChat} />

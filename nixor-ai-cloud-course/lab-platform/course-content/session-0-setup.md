@@ -1,16 +1,25 @@
-# Session 0 — Get Ready (do this before Day 1)
+# Session 0 — Setup for Success (before Day 1)
 
-A few minutes now saves an hour of setup on Day 1. The course website handles most of
-this for you.
+**Goal:** arrive on Day 1 ready to build, not stuck on setup.
+
+This platform is designed so your browser is enough: code editor, terminal, and AI helper are all built in.
+
+## Why this matters
+- Setup delays kill momentum in technical courses.
+- Cloud projects fail early when credentials and environments are inconsistent.
+- A repeatable setup is your first engineering skill.
 
 ## Steps
-1. **Log in to the course site** with your school email. This automatically creates your
-   personal Azure sandbox — a private space with an AI model and a web app waiting for you.
-2. **Accept the invitation email** from Microsoft (subject mentions Azure / Nixor). This
-   gives your email access to your sandbox.
-3. **Create a free GitHub account** if you don't have one, and click the Codespaces link
-   on the site. This opens a ready-to-code workspace in your browser — nothing to install.
-4. **Say hi to the AI**: open your sandbox's chat playground (link on the site) and ask
-   gpt-4o-mini anything. That's a real frontier model answering you.
+1. **Sign in to the platform** with your school email and confirm you can see all three panes: Course, Code Editor, and Linux Terminal.
+2. **Confirm your workspace is alive** by opening the terminal and running `python --version` and `pwd`.
+3. **Open the starter files** in the editor and verify you can see `app.py`, `requirements.txt`, and `README.md`.
+4. **Run your first command** in terminal: `pip install -r requirements.txt` (if already installed, that's fine).
+5. **Start the app locally** with `streamlit run app.py` and keep this terminal command handy for Day 1.
+6. **Use the coding chatbot once**: ask, "What is the difference between local run and cloud deploy?"
 
-You're ready. Bring a laptop and curiosity.
+## Quick checks before class
+- You can log in without errors.
+- Terminal commands run successfully.
+- The app starts locally in your workspace.
+
+You are ready.
