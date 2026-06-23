@@ -1,0 +1,113 @@
+"""FastAPI application entrypoint for the Nixor AI Lab platform.
+
+Serves the JSON/websocket API and, in production, the built React frontend as
+static files from the same origin.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from sqlmodel import Session, select
+
+from .auth import get_user_by_email, hash_password
+from .config import settings
+from .db import engine, init_db
+from .models import User
+from .routers import (
+    admin,
+    auth_routes,
+    chat,
+    course_routes,
+    files,
+    terminal,
+    workspace,
+)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+logger = logging.getLogger("nixor-lab")
+
+app = FastAPI(title="Nixor AI Lab", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origin_list,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# API + websocket routers
+app.include_router(auth_routes.router)
+app.include_router(course_routes.router)
+app.include_router(workspace.router)
+app.include_router(files.router)
+app.include_router(chat.router)
+app.include_router(admin.router)
+app.include_router(terminal.router)
+
+
+@app.on_event("startup")
+def on_startup() -> None:
+    init_db()
+    _bootstrap_instructor()
+    logger.info("Nixor AI Lab started. Course content: %s", settings.course_content_dir)
+
+
+def _bootstrap_instructor() -> None:
+    """Create an instructor account from env vars if it doesn't exist yet.
+    Set INSTRUCTOR_EMAIL and INSTRUCTOR_PASSWORD to enable."""
+    email = os.getenv("INSTRUCTOR_EMAIL", "").lower().strip()
+    password = os.getenv("INSTRUCTOR_PASSWORD", "")
+    if not email or not password:
+        return
+    with Session(engine) as session:
+        existing = get_user_by_email(session, email)
+        if existing:
+            if not existing.is_instructor:
+                existing.is_instructor = True
+                session.commit()
+            return
+        session.add(
+            User(
+                email=email,
+                name="Instructor",
+                password_hash=hash_password(password),
+                is_instructor=True,
+            )
+        )
+        session.commit()
+        logger.info("Bootstrapped instructor account: %s", email)
+
+
+@app.get("/api/health")
+def health() -> dict:
+    return {"status": "ok"}
+
+
+# --------------------------------------------------------------------------- #
+# Serve the built frontend (production). In dev, Vite serves it on :5173.
+# --------------------------------------------------------------------------- #
+_FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+
+if _FRONTEND_DIST.is_dir():
+    app.mount("/assets", StaticFiles(directory=_FRONTEND_DIST / "assets"), name="assets")
+
+    @app.get("/{full_path:path}")
+    def spa(full_path: str):
+        # API/ws paths are handled above; everything else returns the SPA shell.
+        candidate = _FRONTEND_DIST / full_path
+        if full_path and candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(_FRONTEND_DIST / "index.html")
+else:
+    logger.warning("Frontend build not found at %s (run `npm run build`).", _FRONTEND_DIST)

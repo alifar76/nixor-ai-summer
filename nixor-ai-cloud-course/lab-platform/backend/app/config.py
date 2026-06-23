@@ -1,0 +1,71 @@
+"""Central configuration, loaded from environment variables.
+
+Nothing secret is hardcoded here — every credential comes from the environment
+(see .env.example). This mirrors the project's hard constraint: no secrets in code.
+"""
+
+from __future__ import annotations
+
+from functools import lru_cache
+from pathlib import Path
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+# Repo layout: this file is lab-platform/backend/app/config.py.
+# Course assets are bundled under lab-platform/course-content and lab-platform/student-app.
+_THIS = Path(__file__).resolve()
+_LAB_PLATFORM = _THIS.parents[2]            # .../lab-platform
+_COURSE_ROOT = _LAB_PLATFORM
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    # --- Auth ---
+    # Used to sign session JWTs. MUST be overridden in production.
+    session_signing_key: str = "dev-only-change-me"
+    jwt_algorithm: str = "HS256"
+    session_ttl_hours: int = 24 * 7
+    # Optional shared code required to sign up — gatekeeps to your cohort.
+    signup_access_code: str = ""
+
+    # --- Database ---
+    database_url: str = "sqlite:///./lab_platform.db"
+
+    # --- Course content ---
+    course_content_dir: str = str(_COURSE_ROOT / "course-content")
+
+    # --- Azure AI Foundry (the in-app chatbot) ---
+    azure_openai_endpoint: str = ""        # https://<resource>.openai.azure.com/  or  https://<resource>.cognitiveservices.azure.com/
+    azure_openai_api_key: str = ""
+    azure_openai_deployment: str = "gpt-4.1-mini"
+    azure_openai_api_version: str = "2024-10-21"
+
+    # --- Per-student workspace containers ---
+    workspace_driver: str = "local"        # local | docker
+    workspace_image: str = "nixor-workspace:latest"
+    workspace_cpus: float = 1.0            # CPU quota per student container
+    workspace_memory_mb: int = 1024        # memory cap per student container
+    workspace_network: str = "bridge"      # students need internet (pip, az). Use a custom net to isolate students from each other.
+    workspace_home: str = "/home/student"  # where the persistent volume mounts
+    workspace_idle_timeout_min: int = 120  # stop idle containers to save resources
+    docker_host: str = ""                  # empty => default (unix socket / DOCKER_HOST)
+    local_workspace_root: str = str(_LAB_PLATFORM / ".workspace-data")
+    local_workspace_template_dir: str = str(_COURSE_ROOT / "student-app")
+
+    # --- CORS / frontend ---
+    # Comma-separated list of allowed origins. "*" for dev only.
+    cors_origins: str = "*"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
+
+
+settings = get_settings()
