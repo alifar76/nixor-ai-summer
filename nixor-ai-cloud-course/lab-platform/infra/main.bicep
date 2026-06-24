@@ -107,7 +107,7 @@ resource web 'Microsoft.Web/sites@2024-04-01' = {
         }
         {
           name: 'DATABASE_URL'
-          value: 'sqlite:////home/site/lab_platform.db'
+          value: 'sqlite:////home/site/data/lab_platform.db'
         }
         {
           name: 'WORKSPACE_DRIVER'
