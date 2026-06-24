@@ -33,17 +33,21 @@ export function App() {
     const me = await api.me();
     setUser(me);
 
-    await api.workspaceStart();
-
-    const [courseRes, progressRes, filesRes] = await Promise.all([
-      api.course(),
-      api.progress(),
-      api.filesTree(),
-    ]);
-    setCourse(courseRes.sessions || []);
-    setSelectedSessionId(courseRes.sessions?.[0]?.id || "");
+    // Course should always load, even if workspace/terminal setup fails.
+    const [courseRes, progressRes] = await Promise.all([api.course(), api.progress()]);
+    const sessions = courseRes.sessions || [];
+    setCourse(sessions);
+    setSelectedSessionId((prev) => prev || sessions?.[0]?.id || "");
     setCompleted(progressRes.completed || []);
-    setFiles(filesRes.files || []);
+
+    try {
+      await api.workspaceStart();
+      const filesRes = await api.filesTree();
+      setFiles(filesRes.files || []);
+    } catch {
+      setFiles([]);
+      setBanner("Workspace could not start. Try again in a few seconds.");
+    }
   }
 
   useEffect(() => {

@@ -17,6 +17,7 @@ import asyncio
 import json
 import logging
 import re
+import shlex
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from sqlmodel import Session
@@ -29,6 +30,59 @@ from ..workspaces import manager
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["terminal"])
 _BLOCK_RE = re.compile(settings.terminal_block_patterns, re.IGNORECASE)
+
+
+def _split_shell_segments(line: str) -> list[str]:
+    # Split simple command chains so `cmd1; cmd2` and `cmd1 && cmd2` are checked.
+    parts = re.split(r"(?:&&|\|\||;|\|)", line)
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _is_dangerous_segment(segment: str) -> bool:
+    if _BLOCK_RE.search(segment):
+        return True
+    try:
+        tokens = shlex.split(segment, posix=True)
+    except Exception:
+        return False
+    if not tokens:
+        return False
+    cmd = tokens[0].split("/")[-1]
+    if cmd != "rm":
+        return False
+
+    recursive = False
+    targets: list[str] = []
+    for tok in tokens[1:]:
+        if tok.startswith("-"):
+            if "r" in tok or "R" in tok:
+                recursive = True
+            continue
+        targets.append(tok.strip().strip('"').strip("'"))
+
+    if not recursive:
+        return False
+
+    # Any recursive rm targeting filesystem root (or wildcard under root) is blocked.
+    # Also block "wipe current workspace" shorthands; allow normal folder cleanup.
+    dangerous_targets = {
+        "/",
+        ".",
+        "..",
+        "~",
+        "$HOME",
+        "*",
+        "./*",
+        "../*",
+        "~/*",
+        "$HOME/*",
+    }
+    for target in targets:
+        if target in dangerous_targets:
+            return True
+        if target.startswith("/*"):
+            return True
+    return False
 
 
 class _CommandGuard:
@@ -46,8 +100,11 @@ class _CommandGuard:
         for ch in raw_input:
             if ch in {"\r", "\n"}:
                 line = self._normalize(self._buffer)
-                if line and _BLOCK_RE.search(line):
-                    blocked = True
+                if line:
+                    for segment in _split_shell_segments(line):
+                        if _is_dangerous_segment(segment):
+                            blocked = True
+                            break
                 self._buffer = ""
                 continue
             if ch in {"\b", "\x7f"}:

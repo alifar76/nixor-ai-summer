@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from pathlib import Path
 
 from sqlmodel import Session, SQLModel, create_engine
 
@@ -14,6 +15,15 @@ _connect_args = (
     {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
 )
 
+
+def _prepare_sqlite_dir() -> None:
+    if not settings.database_url.startswith("sqlite:////"):
+        return
+    db_file = Path(settings.database_url.removeprefix("sqlite:////"))
+    db_file.parent.mkdir(parents=True, exist_ok=True)
+
+
+_prepare_sqlite_dir()
 engine = create_engine(settings.database_url, echo=False, connect_args=_connect_args)
 
 

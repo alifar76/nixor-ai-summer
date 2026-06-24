@@ -109,6 +109,22 @@ class LocalWorkspaceManager(WorkspaceManager):
         return uid, gid
 
     @staticmethod
+    def _read_process_uid(pid: int) -> Optional[int]:
+        status_path = pathlib.Path(f"/proc/{pid}/status")
+        if not status_path.exists():
+            return None
+        try:
+            for line in status_path.read_text(encoding="utf-8", errors="replace").splitlines():
+                if not line.startswith("Uid:"):
+                    continue
+                parts = line.split()
+                if len(parts) >= 2:
+                    return int(parts[1])
+        except Exception:
+            return None
+        return None
+
+    @staticmethod
     def _workspace_name(user_id: int) -> str:
         return f"ws-user-{user_id}"
 
@@ -206,6 +222,11 @@ class LocalWorkspaceManager(WorkspaceManager):
             preexec_fn=_drop_privs,
         )
         os.close(slave_fd)
+        if settings.terminal_require_non_root:
+            runtime_uid = self._read_process_uid(process.pid)
+            if runtime_uid in {None, 0}:
+                process.terminate()
+                raise RuntimeError("Terminal sandbox user verification failed (root not allowed).")
         sock = PtySocket(master_fd)
         term = TerminalSession(process=process, socket=sock, _fd=master_fd)
         term.resize(cols, rows)
