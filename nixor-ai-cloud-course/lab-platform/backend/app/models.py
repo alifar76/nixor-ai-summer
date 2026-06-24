@@ -68,6 +68,11 @@ class StudentSandbox(SQLModel, table=True):
     azure_openai_api_key: str = ""
     azure_openai_deployment: str = ""
     status: str = "pending"               # pending | ready | deployed | error
+    # Cluster node assignment (Session 3 VM-cluster deploy path).
+    # node_index is the 0-based index into CLUSTER_NODE_URLS; -1 = not yet assigned.
+    # cluster_port is the host port on that node where the student's container listens.
+    cluster_node_index: int = Field(default=-1)
+    cluster_port: int = Field(default=0)
     updated_at: datetime = Field(default_factory=_utcnow)
     created_at: datetime = Field(default_factory=_utcnow)
 
@@ -117,13 +122,16 @@ class ChatRequest(BaseModel):
 
 
 class SandboxInfo(BaseModel):
-    """Public view of a student's Azure sandbox — safe to return to the student."""
+    """Public view of a student's sandbox — safe to return to the student."""
     resource_group: str
     webapp_name: str
     location: str
     deploy_url: str
     status: str
     has_own_ai_credentials: bool
+    # Cluster deploy info (populated once assigned)
+    cluster_node_index: int = -1
+    cluster_port: int = 0
 
 
 class SandboxUpdate(BaseModel):

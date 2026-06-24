@@ -71,30 +71,37 @@ def _email_to_slug(email: str) -> str:
 
 
 def _ensure_sandbox(session: Session, user: User) -> StudentSandbox:
-    """Return the sandbox row, auto-creating it from the platform SP if missing.
+    """Return the sandbox row, auto-creating it if missing.
 
-    The resource_group / webapp_name are derived deterministically from the user's
-    email so re-running provisioning for the same student is always idempotent.
-    The platform SP credentials (from settings) are used for the one-click deploy;
-    students never need their own az login.
+    Names are derived deterministically from user.id so re-running is idempotent.
+    Cluster node + port are assigned here so every student always lands on the same
+    node regardless of when they first log in.
     """
     sb = _get_sandbox(session, user.id)
     if sb is not None:
         return sb
 
     slug = _email_to_slug(user.email)
+    nodes = settings.cluster_nodes
+    node_idx = (user.id - 1) % len(nodes) if nodes else -1
+    port = settings.cluster_port_base + ((user.id - 1) % 100) if nodes else 0
+
     sb = StudentSandbox(
         user_id=user.id,
         resource_group=f"rg-nixor-{slug}",
         webapp_name=f"nixor-{slug}-app",
         location=settings.deploy_location,
         status="ready",
+        cluster_node_index=node_idx,
+        cluster_port=port,
     )
     session.add(sb)
     session.commit()
     session.refresh(sb)
-    logger.info("Auto-provisioned sandbox row for user %s (%s): rg=%s app=%s",
-                user.id, user.email, sb.resource_group, sb.webapp_name)
+    logger.info(
+        "Auto-provisioned sandbox for user %s (%s): node=%d port=%d",
+        user.id, user.email, node_idx, port,
+    )
     return sb
 
 
@@ -112,6 +119,8 @@ def get_sandbox(
         deploy_url=sb.deploy_url,
         status=sb.status,
         has_own_ai_credentials=bool(sb.azure_openai_endpoint and sb.azure_openai_api_key),
+        cluster_node_index=sb.cluster_node_index,
+        cluster_port=sb.cluster_port,
     )
 
 

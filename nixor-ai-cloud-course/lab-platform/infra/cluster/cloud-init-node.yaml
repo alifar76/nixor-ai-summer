@@ -1,0 +1,19 @@
+#cloud-config
+# Cluster deploy node bootstrap.
+# Installs Docker and Python 3; the deploy agent is pushed separately by provision_cluster.sh.
+package_update: true
+package_upgrade: false
+packages:
+  - docker.io
+  - python3-pip
+  - python3-venv
+  - curl
+  - unzip
+
+runcmd:
+  - systemctl enable docker
+  - systemctl start docker
+  - usermod -aG docker azureuser
+  - mkdir -p /opt/nixor-agent
+  - mkdir -p /opt/nixor-builds
+  - mkdir -p /var/log/nixor-agent

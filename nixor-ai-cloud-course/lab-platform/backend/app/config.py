@@ -72,6 +72,21 @@ class Settings(BaseSettings):
     # Hard cap on a single deploy so a hung `az` can't run forever (seconds).
     deploy_timeout_sec: int = 600
 
+    # --- Student app cluster (Session 3 VM-cluster deploy path) ---
+    # Comma-separated list of deploy-agent base URLs, one per node, in order.
+    # e.g. "http://1.2.3.4:8080,http://5.6.7.8:8080,...". Leave blank to use
+    # the legacy `az webapp up` path instead.
+    cluster_node_urls: str = ""
+    # Shared secret for the deploy-agent REST API. Must match AGENT_SECRET on each node.
+    cluster_agent_secret: str = ""
+    # Host ports reserved for student containers on cluster nodes.
+    cluster_port_base: int = 9000   # user_id % 100 is added to this
+
+    @property
+    def cluster_nodes(self) -> list[str]:
+        """Parsed list of cluster node base URLs."""
+        return [u.strip() for u in self.cluster_node_urls.split(",") if u.strip()]
+
     # --- Per-student workspace containers ---
     workspace_driver: str = "local"        # local | docker
     workspace_image: str = "nixor-workspace:latest"
