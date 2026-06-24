@@ -31,7 +31,6 @@ from .routers import (
     terminal,
     workspace,
 )
-from .workspaces.local_driver import _write_global_python_shims
 
 logging.basicConfig(
     level=logging.INFO,
@@ -66,8 +65,6 @@ def on_startup() -> None:
     restore_from_backup()
     init_db()
     _bootstrap_instructor()
-    if settings.workspace_driver == "local":
-        _write_global_python_shims()
     # Probe isolation (forks) before starting background threads, so the fork happens
     # while the process is still single-threaded.
     _log_terminal_isolation()

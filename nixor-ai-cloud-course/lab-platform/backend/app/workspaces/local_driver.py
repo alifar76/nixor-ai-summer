@@ -146,56 +146,6 @@ def jail_self_test() -> bool:
     return os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0
 
 
-# Root-owned dir holding python/pip shims for the terminal. It must NOT live under the
-# DB dir (/var/lib/nixor-lab), which is chmod 0700 and therefore not traversable by the
-# unprivileged shell — a shim there would be unreachable. Here every parent (/var,
-# /var/lib) is the standard 0755, so uid 1000 can traverse in and exec the scripts, but
-# the dir itself is root-owned 0755 so uid 1000 cannot unlink or modify them.
-_GLOBAL_SHIM_DIR = "/var/lib/nixor-bin"
-
-
-def _write_global_python_shims() -> None:
-    """Write python/pip wrappers to a root-owned dir the sandbox user can execute but
-    cannot delete. Called once at server startup before any terminal opens."""
-    py = sys.executable or ""
-    if not py or not os.path.exists(py):
-        for name in ("python3", "python"):
-            found = shutil.which(name)
-            if found:
-                py = found
-                break
-    if not py:
-        logger.warning("Could not locate a Python interpreter for terminal shims")
-        return
-    try:
-        os.makedirs(_GLOBAL_SHIM_DIR, mode=0o755, exist_ok=True)
-        # makedirs honours umask, which could strip the traverse/read bits and make the
-        # dir unreachable by uid 1000. Force 0755 explicitly so the shell can get in.
-        os.chmod(_GLOBAL_SHIM_DIR, 0o755)
-    except OSError:
-        logger.warning("Could not create global shim dir %s", _GLOBAL_SHIM_DIR, exc_info=True)
-        return
-    shims = {
-        "python": f'#!/bin/sh\nexec "{py}" "$@"\n',
-        "python3": f'#!/bin/sh\nexec "{py}" "$@"\n',
-        # pip calls os.getcwd() on startup; if the shell's cwd was deleted (e.g. after
-        # rm -rf wiped the workspace) that raises FileNotFoundError. Only fall back to a
-        # valid dir when the current one is gone — otherwise stay put so relative paths
-        # like `pip install -r requirements.txt` still resolve.
-        "pip": f'#!/bin/sh\ncd . 2>/dev/null || cd "${{HOME:-/}}" 2>/dev/null || cd /\nexec "{py}" -m pip "$@"\n',
-        "pip3": f'#!/bin/sh\ncd . 2>/dev/null || cd "${{HOME:-/}}" 2>/dev/null || cd /\nexec "{py}" -m pip "$@"\n',
-    }
-    for name, body in shims.items():
-        path = os.path.join(_GLOBAL_SHIM_DIR, name)
-        try:
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(body)
-            os.chmod(path, 0o755)
-            # Owned by root so the sandbox uid-1000 user cannot delete it.
-        except OSError:
-            logger.warning("Could not write shim %s", path, exc_info=True)
-    logger.info("Terminal python shims written to %s (interpreter: %s)", _GLOBAL_SHIM_DIR, py)
-
 
 class PtySocket:
     """Socket-like wrapper over a PTY master fd for websocket bridging."""
@@ -394,11 +344,7 @@ class LocalWorkspaceManager(WorkspaceManager):
             "HOME": home,
             "PWD": home,
             "TERM": "xterm-256color",
-            # _GLOBAL_SHIM_DIR is root-owned and not reachable by rm from the student
-            # shell; it provides python/pip that survive even if the workspace is wiped.
-            # ~/.local/bin is second so `pip install --user` scripts (streamlit etc.) are
-            # still picked up after a successful install.
-            "PATH": f"{_GLOBAL_SHIM_DIR}:{home}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "PATH": f"{home}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             "PIP_USER": "1",
             "LANG": "C.UTF-8",
         }
