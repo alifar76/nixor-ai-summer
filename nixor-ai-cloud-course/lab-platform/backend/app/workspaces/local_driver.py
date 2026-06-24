@@ -7,6 +7,7 @@ private folder on disk and interactive shell sessions run as child processes.
 
 from __future__ import annotations
 
+import ctypes
 import fcntl
 import logging
 import os
@@ -27,6 +28,121 @@ logger = logging.getLogger(__name__)
 
 _IGNORE_DIRS = {".git", "__pycache__", "node_modules", ".cache", ".venv", "venv", ".azure"}
 _MAX_FILE_BYTES = 1_000_000
+
+# --- Mount-namespace jail primitives -------------------------------------------------- #
+# We confine each interactive shell to a chroot built from read-only bind mounts of the
+# host's system directories plus a writable bind of the student's own workspace. This runs
+# in the forked child (preexec_fn) while still root, before dropping to the sandbox user.
+_CLONE_NEWNS = 0x00020000
+_MS_RDONLY = 1
+_MS_REMOUNT = 32
+_MS_BIND = 4096
+_MS_REC = 16384
+_MS_PRIVATE = 1 << 18
+
+# System directories bind-mounted read-only into every jail. NOTE: /var is deliberately
+# excluded so the protected DB dir (/var/lib/nixor-lab) is never exposed inside a jail.
+_JAIL_RO_DIRS = ("/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/libx32", "/opt", "/etc")
+
+_libc = ctypes.CDLL("libc.so.6", use_errno=True)
+
+
+def _c(value: str | None) -> bytes | None:
+    return value.encode() if value is not None else None
+
+
+def _mount(source: str | None, target: str, fstype: str | None, flags: int, data: str | None) -> None:
+    if _libc.mount(_c(source), _c(target), _c(fstype), ctypes.c_ulong(flags), _c(data)) != 0:
+        err = ctypes.get_errno()
+        raise OSError(err, os.strerror(err), target)
+
+
+def _unshare(flags: int) -> None:
+    if _libc.unshare(ctypes.c_int(flags)) != 0:
+        err = ctypes.get_errno()
+        raise OSError(err, os.strerror(err))
+
+
+def _build_jail(jail_root: str, workspace_dir: str, home: str) -> None:
+    """Assemble and chroot into a confined root. Raises OSError if the essential
+    namespace/mount syscalls are unavailable (caller decides fallback)."""
+    _unshare(_CLONE_NEWNS)
+    # Don't propagate our mounts back to the host mount namespace.
+    _mount("none", "/", None, _MS_REC | _MS_PRIVATE, None)
+
+    os.makedirs(jail_root, exist_ok=True)
+    # Ephemeral, per-session root. Everything not explicitly bound is gone on exit.
+    _mount("tmpfs", jail_root, "tmpfs", 0, "mode=0755")
+
+    # Read-only system directories (binaries, libs, python, certs, configs).
+    bound_any = False
+    for d in _JAIL_RO_DIRS:
+        if not os.path.isdir(d):
+            continue
+        target = jail_root + d
+        os.makedirs(target, exist_ok=True)
+        _mount(d, target, None, _MS_BIND | _MS_REC, None)
+        try:  # best-effort read-only remount
+            _mount("none", target, None, _MS_REMOUNT | _MS_BIND | _MS_RDONLY, None)
+        except OSError:
+            logger.debug("ro remount failed for %s", target, exc_info=True)
+        bound_any = True
+    if not bound_any:
+        raise OSError("no system directories could be bind-mounted into the jail")
+
+    # Device nodes (read-only bind: writes to /dev/null etc. still work; no node create/del).
+    dev_target = jail_root + "/dev"
+    os.makedirs(dev_target, exist_ok=True)
+    try:
+        _mount("/dev", dev_target, None, _MS_BIND | _MS_REC, None)
+        _mount("none", dev_target, None, _MS_REMOUNT | _MS_BIND | _MS_RDONLY, None)
+    except OSError:
+        logger.debug("dev bind failed", exc_info=True)
+
+    # /proc (so ps, top, etc. work) — best-effort.
+    proc_target = jail_root + "/proc"
+    os.makedirs(proc_target, exist_ok=True)
+    try:
+        _mount("proc", proc_target, "proc", 0, None)
+    except OSError:
+        logger.debug("proc mount failed", exc_info=True)
+
+    # Writable scratch /tmp.
+    tmp_target = jail_root + "/tmp"
+    os.makedirs(tmp_target, exist_ok=True)
+    try:
+        _mount("tmpfs", tmp_target, "tmpfs", 0, "mode=1777")
+    except OSError:
+        logger.debug("tmp mount failed", exc_info=True)
+
+    # The student's workspace, writable, at HOME. This is the ONLY place a destructive
+    # command can actually delete anything.
+    ws_target = jail_root + home
+    os.makedirs(ws_target, exist_ok=True)
+    _mount(workspace_dir, ws_target, None, _MS_BIND, None)
+
+    os.chroot(jail_root)
+    os.chdir(home)
+
+
+def jail_self_test() -> bool:
+    """Best-effort probe: can this host create a mount namespace and mount a tmpfs?
+    Run in a throwaway child so it never affects the server. Used only for logging."""
+    if os.geteuid() != 0:
+        return False
+    pid = os.fork()
+    if pid == 0:  # child
+        try:
+            _unshare(_CLONE_NEWNS)
+            _mount("none", "/", None, _MS_REC | _MS_PRIVATE, None)
+            probe = "/tmp/.nixor-jail-probe"
+            os.makedirs(probe, exist_ok=True)
+            _mount("tmpfs", probe, "tmpfs", 0, "mode=0700")
+            os._exit(0)
+        except Exception:
+            os._exit(1)
+    _, status = os.waitpid(pid, 0)
+    return os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0
 
 
 class PtySocket:
@@ -194,39 +310,91 @@ class LocalWorkspaceManager(WorkspaceManager):
     def open_terminal(self, user_id: int, cols: int, rows: int) -> TerminalSession:
         ws = self.ensure_workspace(user_id)
         cwd = pathlib.Path(ws.container_id)
+        mode = settings.terminal_isolation.lower().strip()
+
+        can_jail = mode in {"preferred", "required"} and os.geteuid() == 0
+        if can_jail:
+            try:
+                return self._spawn(cwd, cols, rows, jailed=True)
+            except Exception as exc:
+                logger.warning("Could not start isolated (jailed) terminal for user %s: %s", user_id, exc)
+                if mode == "required":
+                    raise RuntimeError(
+                        "Isolated sandbox is unavailable on this host (TERMINAL_ISOLATION=required)."
+                    ) from exc
+                logger.warning("Falling back to unjailed terminal for user %s.", user_id)
+        return self._spawn(cwd, cols, rows, jailed=False)
+
+    def _spawn(self, cwd: pathlib.Path, cols: int, rows: int, *, jailed: bool) -> TerminalSession:
+        creds = self._sandbox_credentials()
+        # A jailed shell must never run as root inside the chroot (root could escape it),
+        # so force a drop to the sandbox user even if terminal_require_non_root is off.
+        if jailed and creds is None:
+            if os.geteuid() != 0:
+                raise RuntimeError("Jailing requires the API process to run as root.")
+            uid, gid = settings.local_sandbox_uid, settings.local_sandbox_gid
+            if uid <= 0 or gid <= 0:
+                raise RuntimeError("Invalid sandbox UID/GID for jailed terminal.")
+            creds = (uid, gid)
+
+        home = settings.terminal_jail_home if jailed else str(cwd)
         env = {
-            "HOME": str(cwd),
-            "PWD": str(cwd),
+            "HOME": home,
+            "PWD": home,
             "TERM": "xterm-256color",
-            "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            # System site-packages are root-owned (and read-only inside the jail), so make
+            # `pip install` default to a user install into the writable workspace, and put
+            # the resulting console scripts (streamlit, etc.) on PATH.
+            "PATH": f"{home}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "PIP_USER": "1",
             "LANG": "C.UTF-8",
         }
-        creds = self._sandbox_credentials()
+        jail_root = settings.terminal_jail_root
+        if jailed:
+            # Pre-create the jail mount point as root on the host (best-effort).
+            try:
+                os.makedirs(jail_root, exist_ok=True)
+            except OSError:
+                logger.debug("could not pre-create jail root %s", jail_root, exc_info=True)
 
         def _drop_privs() -> None:
             os.setsid()
-            if creds is None:
-                return
-            uid, gid = creds
-            os.setgid(gid)
-            os.setuid(uid)
+            if jailed:
+                _build_jail(jail_root, str(cwd), home)
+            if creds is not None:
+                uid, gid = creds
+                os.setgid(gid)
+                os.setuid(uid)
 
         master_fd, slave_fd = pty.openpty()
-        process = Popen(
-            ["/bin/bash", "--noprofile", "--norc", "-i"],
-            cwd=str(cwd),
-            env=env,
-            stdin=slave_fd,
-            stdout=slave_fd,
-            stderr=slave_fd,
-            preexec_fn=_drop_privs,
-        )
-        os.close(slave_fd)
-        if settings.terminal_require_non_root:
-            runtime_uid = self._read_process_uid(process.pid)
-            if runtime_uid in {None, 0}:
+        process: Optional[Popen] = None
+        try:
+            process = Popen(
+                ["/bin/bash", "--noprofile", "--norc", "-i"],
+                cwd=None if jailed else str(cwd),  # jailed: chdir happens inside the chroot
+                env=env,
+                stdin=slave_fd,
+                stdout=slave_fd,
+                stderr=slave_fd,
+                preexec_fn=_drop_privs,
+            )
+            os.close(slave_fd)
+            slave_fd = -1
+            if settings.terminal_require_non_root or jailed:
+                runtime_uid = self._read_process_uid(process.pid)
+                if runtime_uid in {None, 0}:
+                    raise RuntimeError("Terminal sandbox user verification failed (root not allowed).")
+        except Exception:
+            # Clean up so a failed (e.g. jailed) attempt doesn't leak fds before fallback.
+            if process is not None and process.poll() is None:
                 process.terminate()
-                raise RuntimeError("Terminal sandbox user verification failed (root not allowed).")
+            for fd in (slave_fd, master_fd):
+                if fd >= 0:
+                    try:
+                        os.close(fd)
+                    except OSError:
+                        pass
+            raise
         sock = PtySocket(master_fd)
         term = TerminalSession(process=process, socket=sock, _fd=master_fd)
         term.resize(cols, rows)

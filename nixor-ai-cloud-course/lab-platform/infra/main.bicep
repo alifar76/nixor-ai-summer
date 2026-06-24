@@ -141,6 +141,14 @@ resource web 'Microsoft.Web/sites@2024-04-01' = {
           value: 'true'
         }
         {
+          // Confine each terminal to a chroot jail (workspace writable, system read-only)
+          // when the host allows it; fall back to an unjailed shell otherwise. Set to
+          // 'required' to fail closed once you've confirmed the jail engages (check logs
+          // for "Terminal isolation: ACTIVE").
+          name: 'TERMINAL_ISOLATION'
+          value: 'preferred'
+        }
+        {
           name: 'SESSION_SIGNING_KEY'
           value: sessionSigningKey
         }

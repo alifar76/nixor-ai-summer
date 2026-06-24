@@ -65,8 +65,38 @@ def on_startup() -> None:
     restore_from_backup()
     init_db()
     _bootstrap_instructor()
+    # Probe isolation (forks) before starting background threads, so the fork happens
+    # while the process is still single-threaded.
+    _log_terminal_isolation()
     _start_backup_loop()
     logger.info("Nixor AI Lab started. Course content: %s", settings.course_content_dir)
+
+
+def _log_terminal_isolation() -> None:
+    """Report whether the per-terminal chroot jail can actually engage on this host."""
+    mode = settings.terminal_isolation.lower().strip()
+    if settings.workspace_driver != "local" or mode == "off":
+        logger.info("Terminal isolation: mode=%s driver=%s", mode, settings.workspace_driver)
+        return
+    try:
+        from .workspaces.local_driver import jail_self_test
+
+        ok = jail_self_test()
+    except Exception:
+        ok = False
+    if ok:
+        logger.info("Terminal isolation: ACTIVE (chroot jail; mode=%s)", mode)
+    elif mode == "required":
+        logger.error(
+            "Terminal isolation REQUIRED but the host blocks namespace/mount syscalls; "
+            "terminals will refuse to open. Set TERMINAL_ISOLATION=preferred to allow fallback."
+        )
+    else:
+        logger.warning(
+            "Terminal isolation UNAVAILABLE on this host (namespace/mount syscalls blocked); "
+            "falling back to unjailed shells with command-guard only (mode=%s).",
+            mode,
+        )
 
 
 def _start_backup_loop() -> None:

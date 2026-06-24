@@ -67,6 +67,22 @@ class Settings(BaseSettings):
     terminal_require_non_root: bool = True
     local_sandbox_uid: int = 1000
     local_sandbox_gid: int = 1000
+    # Terminal filesystem isolation. The interactive shell is confined to a chroot +
+    # bind-mount jail in a private mount namespace: system dirs (/usr, /bin, /lib, ...)
+    # are mounted read-only and only the student's own workspace is writable, so a
+    # destructive command like `rm -rf /` cannot touch system binaries, the DB, the app,
+    # or other students. Modes:
+    #   "preferred" (default) - use the jail when the kernel/host allows it; if the
+    #                           required syscalls are blocked, fall back to an unjailed
+    #                           shell (guard-only) so the terminal still works.
+    #   "required"            - jail or nothing: refuse to open a terminal if the jail
+    #                           cannot be built (fail closed, maximum safety).
+    #   "off"                 - no jail (legacy behaviour).
+    terminal_isolation: str = "preferred"
+    # Mount point used to assemble each session's jail (ephemeral tmpfs per session).
+    terminal_jail_root: str = "/var/lib/nixor-lab/jail"
+    # Path the workspace is mounted at inside the jail (becomes HOME / cwd).
+    terminal_jail_home: str = "/workspace"
     terminal_block_dangerous_commands: bool = True
     # Regex families for obviously destructive / system-level commands. Note these are a
     # *deterrent* layer only: recursive `rm` on absolute paths is handled more precisely in

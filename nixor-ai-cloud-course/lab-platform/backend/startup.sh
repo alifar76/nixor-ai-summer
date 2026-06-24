@@ -19,6 +19,10 @@ export DB_BACKUP_PATH="${DB_BACKUP_PATH:-/home/site/data/lab_platform.backup.db}
 mkdir -p "$LOCAL_DB_DIR"
 chmod 700 "$LOCAL_DB_DIR"
 
+# Mount point used to assemble each terminal's chroot jail (a tmpfs is mounted here
+# per-session inside a private namespace). Lives under the root-owned 0700 dir above.
+mkdir -p "${TERMINAL_JAIL_ROOT:-/var/lib/nixor-lab/jail}"
+
 # Persistent (terminal-reachable) locations for backups and student workspaces.
 mkdir -p /home/site/data
 mkdir -p /home/site/workspaces
