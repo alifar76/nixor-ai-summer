@@ -15,6 +15,7 @@ import pathlib
 import pty
 import shutil
 import struct
+import sys
 import termios
 import threading
 from dataclasses import dataclass
@@ -256,6 +257,46 @@ class LocalWorkspaceManager(WorkspaceManager):
     def _workspace_dir(self, user_id: int) -> pathlib.Path:
         return self._root() / f"user-{user_id}"
 
+    @staticmethod
+    def _python_interpreter() -> str:
+        """Absolute path to the interpreter the terminal should use for python/pip.
+
+        On Azure App Service (Oryx PYTHON|3.11) python is NOT in /usr/bin — it lives
+        under /opt/python/... and the app runs inside an `antenv` virtualenv, neither of
+        which is on a plain login PATH. The API process, however, is already running on
+        that interpreter, so `sys.executable` points straight at it."""
+        candidate = (sys.executable or "").strip()
+        if candidate and os.path.exists(candidate):
+            return candidate
+        for name in ("python3", "python"):
+            found = shutil.which(name)
+            if found:
+                return found
+        return "/usr/bin/python3"
+
+    def _ensure_python_shims(self, ws_dir: pathlib.Path) -> None:
+        """Drop `python`/`pip` wrapper scripts into the workspace's ~/.local/bin (already
+        first on the terminal PATH) so the course's documented commands resolve regardless
+        of where the host actually keeps its interpreter."""
+        py = self._python_interpreter()
+        bin_dir = ws_dir / ".local" / "bin"
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        shims = {
+            "python": f'#!/bin/sh\nexec "{py}" "$@"\n',
+            "python3": f'#!/bin/sh\nexec "{py}" "$@"\n',
+            # `pip install --user` (PIP_USER=1) writes into ~/.local of the writable
+            # workspace, so installs work even when site-packages are read-only.
+            "pip": f'#!/bin/sh\nexec "{py}" -m pip "$@"\n',
+            "pip3": f'#!/bin/sh\nexec "{py}" -m pip "$@"\n',
+        }
+        for name, body in shims.items():
+            path = bin_dir / name
+            try:
+                path.write_text(body, encoding="utf-8")
+                path.chmod(0o755)
+            except OSError:
+                logger.debug("could not write python shim %s", path, exc_info=True)
+
     def _seed_workspace(self, target: pathlib.Path) -> None:
         template = pathlib.Path(settings.local_workspace_template_dir)
         if not template.exists() or not template.is_dir():
@@ -276,6 +317,7 @@ class LocalWorkspaceManager(WorkspaceManager):
         with self._lock:
             ws_dir.mkdir(parents=True, exist_ok=True)
             self._seed_workspace(ws_dir)
+            self._ensure_python_shims(ws_dir)
             creds = self._sandbox_credentials()
             if creds is not None:
                 uid, gid = creds
