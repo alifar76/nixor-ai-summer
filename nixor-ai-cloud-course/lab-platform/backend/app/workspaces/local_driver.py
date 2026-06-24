@@ -366,6 +366,16 @@ class LocalWorkspaceManager(WorkspaceManager):
 
         def _drop_privs() -> None:
             os.setsid()
+            # Make the PTY slave this new session's controlling terminal. Without this,
+            # bash reports "cannot set terminal process group" / "no job control", and the
+            # tty has no foreground process group — so Ctrl+C is echoed as a literal ^C
+            # instead of delivering SIGINT to the running program (e.g. streamlit). Must
+            # come after setsid() (we need to be a session leader with no controlling tty)
+            # and before chroot/setuid, while we still hold the fd.
+            try:
+                fcntl.ioctl(slave_fd, termios.TIOCSCTTY, 0)
+            except OSError:
+                logger.debug("TIOCSCTTY failed; job control may be unavailable", exc_info=True)
             if jailed:
                 _build_jail(jail_root, str(cwd), home)
             if creds is not None:
@@ -384,6 +394,9 @@ class LocalWorkspaceManager(WorkspaceManager):
                 stdout=slave_fd,
                 stderr=slave_fd,
                 preexec_fn=_drop_privs,
+                # Keep slave_fd open in the child so _drop_privs can TIOCSCTTY it. Without
+                # pass_fds, close_fds=True would shut it (it's >= 3) before preexec runs.
+                pass_fds=(slave_fd,),
             )
             os.close(slave_fd)
             slave_fd = -1
