@@ -30,6 +30,8 @@ from ..workspaces import manager
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["terminal"])
 _BLOCK_RE = re.compile(settings.terminal_block_patterns, re.IGNORECASE)
+_ANSI_CSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+_PASTE_MARKER_RE = re.compile(r"(?:\x1b)?\[\s*20[01]~")
 
 
 def _split_shell_segments(line: str) -> list[str]:
@@ -39,6 +41,9 @@ def _split_shell_segments(line: str) -> list[str]:
 
 
 def _is_dangerous_segment(segment: str) -> bool:
+    lowered = segment.lower()
+    if "--no-preserve-root" in lowered:
+        return True
     if _BLOCK_RE.search(segment):
         return True
     try:
@@ -63,8 +68,7 @@ def _is_dangerous_segment(segment: str) -> bool:
     if not recursive:
         return False
 
-    # Any recursive rm targeting filesystem root (or wildcard under root) is blocked.
-    # Also block "wipe current workspace" shorthands; allow normal folder cleanup.
+    # Allow cleanup of named relative paths, but block destructive roots/wildcards.
     dangerous_targets = {
         "/",
         ".",
@@ -80,7 +84,8 @@ def _is_dangerous_segment(segment: str) -> bool:
     for target in targets:
         if target in dangerous_targets:
             return True
-        if target.startswith("/*"):
+        # Never allow recursive rm on absolute paths in this teaching environment.
+        if target.startswith("/"):
             return True
     return False
 
@@ -90,8 +95,10 @@ class _CommandGuard:
         self._buffer = ""
 
     def _normalize(self, text: str) -> str:
-        # Normalize line for matching while keeping enough fidelity for regexes.
-        cleaned = "".join(ch for ch in text if ch.isprintable() or ch in {"\t", " "})
+        # Remove control/paste wrappers first, then normalize visible text.
+        stripped = _ANSI_CSI_RE.sub("", text)
+        stripped = _PASTE_MARKER_RE.sub("", stripped)
+        cleaned = "".join(ch for ch in stripped if ch.isprintable() or ch in {"\t", " "})
         return re.sub(r"\s+", " ", cleaned).strip()
 
     def check(self, raw_input: str) -> tuple[bool, str]:

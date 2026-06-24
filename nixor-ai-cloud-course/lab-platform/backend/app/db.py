@@ -5,12 +5,14 @@ from __future__ import annotations
 from collections.abc import Iterator
 from pathlib import Path
 
+from sqlalchemy.pool import NullPool
 from sqlmodel import Session, SQLModel, create_engine
 
 from .config import settings
 
 # check_same_thread=False is required because FastAPI may use the connection
 # across threads (e.g. background tasks). SQLite-specific; ignored by Postgres.
+_is_sqlite = settings.database_url.startswith("sqlite")
 _connect_args = (
     {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
 )
@@ -24,7 +26,12 @@ def _prepare_sqlite_dir() -> None:
 
 
 _prepare_sqlite_dir()
-engine = create_engine(settings.database_url, echo=False, connect_args=_connect_args)
+engine = create_engine(
+    settings.database_url,
+    echo=False,
+    connect_args=_connect_args,
+    poolclass=NullPool if _is_sqlite else None,
+)
 
 
 def init_db() -> None:
