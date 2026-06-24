@@ -118,6 +118,22 @@ resource web 'Microsoft.Web/sites@2024-04-01' = {
           value: '/home/site/workspaces'
         }
         {
+          name: 'TERMINAL_REQUIRE_NON_ROOT'
+          value: 'true'
+        }
+        {
+          name: 'LOCAL_SANDBOX_UID'
+          value: '1000'
+        }
+        {
+          name: 'LOCAL_SANDBOX_GID'
+          value: '1000'
+        }
+        {
+          name: 'TERMINAL_BLOCK_DANGEROUS_COMMANDS'
+          value: 'true'
+        }
+        {
           name: 'SESSION_SIGNING_KEY'
           value: sessionSigningKey
         }

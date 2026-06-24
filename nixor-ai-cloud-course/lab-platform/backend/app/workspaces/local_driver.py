@@ -85,6 +85,30 @@ class LocalWorkspaceManager(WorkspaceManager):
         self._stopped: set[int] = set()
 
     @staticmethod
+    def _set_tree_owner(root: pathlib.Path, uid: int, gid: int) -> None:
+        for dirpath, dirnames, filenames in os.walk(root):
+            current = pathlib.Path(dirpath)
+            try:
+                os.chown(current, uid, gid)
+            except OSError:
+                logger.debug("chown failed for %s", current, exc_info=True)
+            for name in filenames:
+                path = current / name
+                try:
+                    os.chown(path, uid, gid)
+                except OSError:
+                    logger.debug("chown failed for %s", path, exc_info=True)
+
+    def _sandbox_credentials(self) -> tuple[int, int] | None:
+        if not settings.terminal_require_non_root or os.geteuid() != 0:
+            return None
+        uid = settings.local_sandbox_uid
+        gid = settings.local_sandbox_gid
+        if uid <= 0 or gid <= 0:
+            raise RuntimeError("Invalid sandbox UID/GID. Must be non-zero values.")
+        return uid, gid
+
+    @staticmethod
     def _workspace_name(user_id: int) -> str:
         return f"ws-user-{user_id}"
 
@@ -120,6 +144,10 @@ class LocalWorkspaceManager(WorkspaceManager):
         with self._lock:
             ws_dir.mkdir(parents=True, exist_ok=True)
             self._seed_workspace(ws_dir)
+            creds = self._sandbox_credentials()
+            if creds is not None:
+                uid, gid = creds
+                self._set_tree_owner(ws_dir, uid, gid)
             self._stopped.discard(user_id)
         return WorkspaceInfo(
             user_id=user_id,
@@ -150,19 +178,32 @@ class LocalWorkspaceManager(WorkspaceManager):
     def open_terminal(self, user_id: int, cols: int, rows: int) -> TerminalSession:
         ws = self.ensure_workspace(user_id)
         cwd = pathlib.Path(ws.container_id)
-        env = os.environ.copy()
-        env["HOME"] = str(cwd)
-        env.setdefault("TERM", "xterm-256color")
+        env = {
+            "HOME": str(cwd),
+            "PWD": str(cwd),
+            "TERM": "xterm-256color",
+            "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "LANG": "C.UTF-8",
+        }
+        creds = self._sandbox_credentials()
+
+        def _drop_privs() -> None:
+            os.setsid()
+            if creds is None:
+                return
+            uid, gid = creds
+            os.setgid(gid)
+            os.setuid(uid)
 
         master_fd, slave_fd = pty.openpty()
         process = Popen(
-            ["/bin/bash", "-li"],
+            ["/bin/bash", "--noprofile", "--norc", "-i"],
             cwd=str(cwd),
             env=env,
             stdin=slave_fd,
             stdout=slave_fd,
             stderr=slave_fd,
-            preexec_fn=os.setsid,
+            preexec_fn=_drop_privs,
         )
         os.close(slave_fd)
         sock = PtySocket(master_fd)

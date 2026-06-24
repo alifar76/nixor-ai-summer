@@ -70,3 +70,5 @@ The script will:
 - `WORKSPACE_DRIVER=local` is used for Azure Web App compatibility.
 - Student workspace files are stored in `/home/site/workspaces`.
 - SQLite DB is stored in `/home/site/data/lab_platform.db`.
+- Terminal sessions are hardened to run as a non-root sandbox UID/GID.
+- High-risk destructive terminal commands (for example `rm -rf /`) are blocked by policy.

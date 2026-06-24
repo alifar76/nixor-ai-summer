@@ -53,6 +53,19 @@ class Settings(BaseSettings):
     docker_host: str = ""                  # empty => default (unix socket / DOCKER_HOST)
     local_workspace_root: str = str(_LAB_PLATFORM / ".workspace-data")
     local_workspace_template_dir: str = str(_COURSE_ROOT / "student-app")
+    terminal_require_non_root: bool = True
+    local_sandbox_uid: int = 1000
+    local_sandbox_gid: int = 1000
+    terminal_block_dangerous_commands: bool = True
+    terminal_block_patterns: str = (
+        r"(^|\s)rm\s+-rf\s+--no-preserve-root\s+/(\s|$)|"
+        r"(^|\s)rm\s+-rf\s+/(\s|$)|"
+        r"(^|\s)(mkfs(\.\w+)?|fdisk|sfdisk)(\s|$)|"
+        r"(^|\s)dd\s+.*\sof=/dev/(\s|$)|"
+        r"(^|\s)(shutdown|reboot|poweroff|halt)(\s|$)|"
+        r"(^|\s)init\s+[06](\s|$)|"
+        r":\(\)\s*\{\s*:\|:\s*&\s*\};:"
+    )
 
     # --- CORS / frontend ---
     # Comma-separated list of allowed origins. "*" for dev only.
