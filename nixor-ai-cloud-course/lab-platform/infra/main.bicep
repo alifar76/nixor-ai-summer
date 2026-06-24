@@ -106,8 +106,15 @@ resource web 'Microsoft.Web/sites@2024-04-01' = {
           value: '8000'
         }
         {
+          // Live DB on local disk (root-owned 0700 dir, created by startup.sh) so the
+          // unprivileged student terminal cannot delete it. Durability via DB_BACKUP_PATH.
           name: 'DATABASE_URL'
-          value: 'sqlite:////home/site/data/lab_platform.db'
+          value: 'sqlite:////var/lib/nixor-lab/lab_platform.db'
+        }
+        {
+          // Persistent snapshot on the /home mount: restored on boot, refreshed periodically.
+          name: 'DB_BACKUP_PATH'
+          value: '/home/site/data/lab_platform.backup.db'
         }
         {
           name: 'WORKSPACE_DRIVER'

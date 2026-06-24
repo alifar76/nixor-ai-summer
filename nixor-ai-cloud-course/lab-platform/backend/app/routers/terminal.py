@@ -46,6 +46,11 @@ def _is_dangerous_segment(segment: str) -> bool:
         return True
     if _BLOCK_RE.search(segment):
         return True
+    # Also scan with quotes removed so wrapped payloads like `bash -c 'rm -rf /'`,
+    # `sh -c "mkfs ..."`, or `eval '...'` are inspected rather than hidden behind quoting.
+    unquoted = segment.replace("'", " ").replace('"', " ")
+    if unquoted != segment and _BLOCK_RE.search(unquoted):
+        return True
     try:
         tokens = shlex.split(segment, posix=True)
     except Exception:

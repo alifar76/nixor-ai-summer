@@ -31,7 +31,18 @@ class Settings(BaseSettings):
     signup_access_code: str = ""
 
     # --- Database ---
+    # IMPORTANT (security): on Azure App Service the live DB must live on a path the
+    # student terminal cannot reach. The interactive terminal runs as an unprivileged
+    # sandbox user (uid 1000); we keep the SQLite file in a root-owned 0700 directory on
+    # the container's *local* disk (see startup.sh / main.bicep DATABASE_URL), NOT under
+    # the world-writable /home mount. That way a malicious `rm -rf /` in the terminal gets
+    # permission-denied on the DB and login/signup keep working.
     database_url: str = "sqlite:///./lab_platform.db"
+    # Optional persistent backup location (e.g. on the /home Azure Files mount). When set,
+    # the app periodically snapshots the live DB here and restores from it on boot, so
+    # ordinary restarts/redeploys keep student accounts and progress.
+    db_backup_path: str = ""
+    db_backup_interval_sec: int = 60
 
     # --- Course content ---
     course_content_dir: str = str(_COURSE_ROOT / "course-content")
@@ -57,13 +68,20 @@ class Settings(BaseSettings):
     local_sandbox_uid: int = 1000
     local_sandbox_gid: int = 1000
     terminal_block_dangerous_commands: bool = True
+    # Regex families for obviously destructive / system-level commands. Note these are a
+    # *deterrent* layer only: recursive `rm` on absolute paths is handled more precisely in
+    # terminal.py, and the real safety guarantee is filesystem reach (DB off /home,
+    # workspace re-seeded). Patterns are matched case-insensitively against each command
+    # segment, with quotes stripped so `bash -c 'rm -rf /'` payloads are still caught.
     terminal_block_patterns: str = (
-        r"(^|\s)rm\s+-rf\s+--no-preserve-root\s+/(\s|$)|"
-        r"(^|\s)rm\s+-rf\s+/(\s|$)|"
-        r"(^|\s)(mkfs(\.\w+)?|fdisk|sfdisk)(\s|$)|"
-        r"(^|\s)dd\s+.*\sof=/dev/(\s|$)|"
+        r"(^|\s)rm\s+(-\S+\s+)*--no-preserve-root(\s|$)|"
+        r"(^|\s)rm\s+-\S*r\S*\s+/(\s|$)|"
+        r"(^|\s)(mkfs(\.\w+)?|fdisk|sfdisk|wipefs|blkdiscard)(\s|$)|"
+        r"(^|\s)dd\s+\S*.*\bof=/dev/[a-z]|"
+        r"(^|\s)(chmod|chown)\s+\S*r\S*\s+\S*\s*/(\s|$)|"
         r"(^|\s)(shutdown|reboot|poweroff|halt)(\s|$)|"
         r"(^|\s)init\s+[06](\s|$)|"
+        r">\s*/dev/(sd|nvme|vd|hd|mmcblk)|"
         r":\(\)\s*\{\s*:\|:\s*&\s*\};:"
     )
 

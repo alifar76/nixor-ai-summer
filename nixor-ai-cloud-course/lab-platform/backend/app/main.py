@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
+import time
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -18,7 +20,7 @@ from sqlmodel import Session, select
 
 from .auth import get_user_by_email, hash_password
 from .config import settings
-from .db import engine, init_db
+from .db import backup_database, engine, init_db, restore_from_backup
 from .models import User
 from .routers import (
     admin,
@@ -58,9 +60,28 @@ app.include_router(terminal.router)
 
 @app.on_event("startup")
 def on_startup() -> None:
+    # Restore from the persistent backup (if any) BEFORE creating tables, so an
+    # ordinary restart keeps existing accounts/progress.
+    restore_from_backup()
     init_db()
     _bootstrap_instructor()
+    _start_backup_loop()
     logger.info("Nixor AI Lab started. Course content: %s", settings.course_content_dir)
+
+
+def _start_backup_loop() -> None:
+    """Periodically snapshot the protected live DB to the persistent backup path."""
+    interval = settings.db_backup_interval_sec
+    if not settings.db_backup_path.strip() or interval <= 0:
+        return
+
+    def _loop() -> None:
+        while True:
+            time.sleep(interval)
+            backup_database()
+
+    threading.Thread(target=_loop, name="db-backup", daemon=True).start()
+    logger.info("DB backup loop started (every %ss -> %s)", interval, settings.db_backup_path)
 
 
 def _bootstrap_instructor() -> None:
