@@ -23,6 +23,7 @@ from ..models import (
     User,
     UserPublic,
 )
+from .workspace import _ensure_sandbox
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -49,6 +50,7 @@ def signup(body: SignupRequest, session: Session = Depends(get_session)) -> Toke
     session.add(user)
     session.commit()
     session.refresh(user)
+    _ensure_sandbox(session, user)
     logger.info("New signup: %s", email)
     return TokenResponse(access_token=create_access_token(user), user=_public(user))
 

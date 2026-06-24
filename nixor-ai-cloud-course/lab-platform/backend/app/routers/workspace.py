@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
@@ -62,26 +63,49 @@ def _get_sandbox(session: Session, user_id: int) -> StudentSandbox | None:
     return session.exec(select(StudentSandbox).where(StudentSandbox.user_id == user_id)).first()
 
 
+def _email_to_slug(email: str) -> str:
+    """ali.faruqi@datadam.io → ali-faruqi (max 20 chars, safe for Azure resource names)."""
+    local = email.split("@")[0]
+    slug = re.sub(r"[^a-z0-9]+", "-", local.lower()).strip("-")
+    return slug[:20]
+
+
+def _ensure_sandbox(session: Session, user: User) -> StudentSandbox:
+    """Return the sandbox row, auto-creating it from the platform SP if missing.
+
+    The resource_group / webapp_name are derived deterministically from the user's
+    email so re-running provisioning for the same student is always idempotent.
+    The platform SP credentials (from settings) are used for the one-click deploy;
+    students never need their own az login.
+    """
+    sb = _get_sandbox(session, user.id)
+    if sb is not None:
+        return sb
+
+    slug = _email_to_slug(user.email)
+    location = settings.azure_subscription_id and "eastus" or "eastus"
+    sb = StudentSandbox(
+        user_id=user.id,
+        resource_group=f"rg-nixor-{slug}",
+        webapp_name=f"nixor-{slug}-app",
+        location=location,
+        status="ready",
+    )
+    session.add(sb)
+    session.commit()
+    session.refresh(sb)
+    logger.info("Auto-provisioned sandbox row for user %s (%s): rg=%s app=%s",
+                user.id, user.email, sb.resource_group, sb.webapp_name)
+    return sb
+
+
 @router.get("/sandbox", response_model=SandboxInfo)
 def get_sandbox(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> SandboxInfo:
-    """Return this student's Azure resource info.
-
-    If no per-student sandbox has been provisioned yet, returns placeholder values
-    so the frontend can still show the deploy command section (just with empty fields).
-    """
-    sb = _get_sandbox(session, user.id)
-    if sb is None:
-        return SandboxInfo(
-            resource_group="",
-            webapp_name="",
-            location="",
-            deploy_url="",
-            status="pending",
-            has_own_ai_credentials=False,
-        )
+    """Return this student's Azure resource info, auto-creating the row if needed."""
+    sb = _ensure_sandbox(session, user)
     return SandboxInfo(
         resource_group=sb.resource_group,
         webapp_name=sb.webapp_name,
