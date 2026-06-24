@@ -103,7 +103,7 @@ async def deploy(
 
         webapp = sandbox.webapp_name
         rg = sandbox.resource_group
-        location = sandbox.location or "eastus"
+        location = sandbox.location or settings.deploy_location
 
         # az needs a writable config dir; keep it off the student's workspace.
         az_env = {

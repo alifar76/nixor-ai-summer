@@ -66,6 +66,9 @@ class Settings(BaseSettings):
     # Runtime/SKU for the student web apps. F1 is free; bump to B1 for demo-day warmth.
     deploy_runtime: str = "PYTHON:3.11"
     deploy_sku: str = "F1"
+    # Azure region every student web app + resource group is created in. One source of
+    # truth: used both when auto-provisioning the sandbox row and by the deploy endpoint.
+    deploy_location: str = "eastus"
     # Hard cap on a single deploy so a hung `az` can't run forever (seconds).
     deploy_timeout_sec: int = 600
 

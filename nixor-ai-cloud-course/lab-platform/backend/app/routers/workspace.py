@@ -83,12 +83,11 @@ def _ensure_sandbox(session: Session, user: User) -> StudentSandbox:
         return sb
 
     slug = _email_to_slug(user.email)
-    location = settings.azure_subscription_id and "eastus" or "eastus"
     sb = StudentSandbox(
         user_id=user.id,
         resource_group=f"rg-nixor-{slug}",
         webapp_name=f"nixor-{slug}-app",
-        location=location,
+        location=settings.deploy_location,
         status="ready",
     )
     session.add(sb)
