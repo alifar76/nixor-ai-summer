@@ -146,6 +146,45 @@ def jail_self_test() -> bool:
     return os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0
 
 
+_GLOBAL_SHIM_DIR = "/var/lib/nixor-lab/bin"
+
+
+def _write_global_python_shims() -> None:
+    """Write python/pip wrappers to a root-owned dir the sandbox user can execute but
+    cannot delete. Called once at server startup before any terminal opens."""
+    py = sys.executable or ""
+    if not py or not os.path.exists(py):
+        for name in ("python3", "python"):
+            found = shutil.which(name)
+            if found:
+                py = found
+                break
+    if not py:
+        logger.warning("Could not locate a Python interpreter for terminal shims")
+        return
+    try:
+        os.makedirs(_GLOBAL_SHIM_DIR, mode=0o755, exist_ok=True)
+    except OSError:
+        logger.warning("Could not create global shim dir %s", _GLOBAL_SHIM_DIR, exc_info=True)
+        return
+    shims = {
+        "python": f'#!/bin/sh\nexec "{py}" "$@"\n',
+        "python3": f'#!/bin/sh\nexec "{py}" "$@"\n',
+        "pip": f'#!/bin/sh\nexec "{py}" -m pip "$@"\n',
+        "pip3": f'#!/bin/sh\nexec "{py}" -m pip "$@"\n',
+    }
+    for name, body in shims.items():
+        path = os.path.join(_GLOBAL_SHIM_DIR, name)
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(body)
+            os.chmod(path, 0o755)
+            # Owned by root so the sandbox uid-1000 user cannot delete it.
+        except OSError:
+            logger.warning("Could not write shim %s", path, exc_info=True)
+    logger.info("Terminal python shims written to %s (interpreter: %s)", _GLOBAL_SHIM_DIR, py)
+
+
 class PtySocket:
     """Socket-like wrapper over a PTY master fd for websocket bridging."""
 
@@ -257,46 +296,6 @@ class LocalWorkspaceManager(WorkspaceManager):
     def _workspace_dir(self, user_id: int) -> pathlib.Path:
         return self._root() / f"user-{user_id}"
 
-    @staticmethod
-    def _python_interpreter() -> str:
-        """Absolute path to the interpreter the terminal should use for python/pip.
-
-        On Azure App Service (Oryx PYTHON|3.11) python is NOT in /usr/bin — it lives
-        under /opt/python/... and the app runs inside an `antenv` virtualenv, neither of
-        which is on a plain login PATH. The API process, however, is already running on
-        that interpreter, so `sys.executable` points straight at it."""
-        candidate = (sys.executable or "").strip()
-        if candidate and os.path.exists(candidate):
-            return candidate
-        for name in ("python3", "python"):
-            found = shutil.which(name)
-            if found:
-                return found
-        return "/usr/bin/python3"
-
-    def _ensure_python_shims(self, ws_dir: pathlib.Path) -> None:
-        """Drop `python`/`pip` wrapper scripts into the workspace's ~/.local/bin (already
-        first on the terminal PATH) so the course's documented commands resolve regardless
-        of where the host actually keeps its interpreter."""
-        py = self._python_interpreter()
-        bin_dir = ws_dir / ".local" / "bin"
-        bin_dir.mkdir(parents=True, exist_ok=True)
-        shims = {
-            "python": f'#!/bin/sh\nexec "{py}" "$@"\n',
-            "python3": f'#!/bin/sh\nexec "{py}" "$@"\n',
-            # `pip install --user` (PIP_USER=1) writes into ~/.local of the writable
-            # workspace, so installs work even when site-packages are read-only.
-            "pip": f'#!/bin/sh\nexec "{py}" -m pip "$@"\n',
-            "pip3": f'#!/bin/sh\nexec "{py}" -m pip "$@"\n',
-        }
-        for name, body in shims.items():
-            path = bin_dir / name
-            try:
-                path.write_text(body, encoding="utf-8")
-                path.chmod(0o755)
-            except OSError:
-                logger.debug("could not write python shim %s", path, exc_info=True)
-
     def _seed_workspace(self, target: pathlib.Path) -> None:
         template = pathlib.Path(settings.local_workspace_template_dir)
         if not template.exists() or not template.is_dir():
@@ -317,7 +316,6 @@ class LocalWorkspaceManager(WorkspaceManager):
         with self._lock:
             ws_dir.mkdir(parents=True, exist_ok=True)
             self._seed_workspace(ws_dir)
-            self._ensure_python_shims(ws_dir)
             creds = self._sandbox_credentials()
             if creds is not None:
                 uid, gid = creds
@@ -384,10 +382,11 @@ class LocalWorkspaceManager(WorkspaceManager):
             "HOME": home,
             "PWD": home,
             "TERM": "xterm-256color",
-            # System site-packages are root-owned (and read-only inside the jail), so make
-            # `pip install` default to a user install into the writable workspace, and put
-            # the resulting console scripts (streamlit, etc.) on PATH.
-            "PATH": f"{home}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            # _GLOBAL_SHIM_DIR is root-owned and not reachable by rm from the student
+            # shell; it provides python/pip that survive even if the workspace is wiped.
+            # ~/.local/bin is second so `pip install --user` scripts (streamlit etc.) are
+            # still picked up after a successful install.
+            "PATH": f"{_GLOBAL_SHIM_DIR}:{home}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             "PIP_USER": "1",
             "LANG": "C.UTF-8",
         }
