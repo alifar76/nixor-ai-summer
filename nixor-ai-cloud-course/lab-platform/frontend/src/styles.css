@@ -380,3 +380,66 @@ body.resizing {
     display: none;
   }
 }
+
+/* ----- Deploy panel (Session 3 one-click deploy) ----- */
+.deploy-panel {
+  margin-top: 0.5rem;
+  flex: 0 0 auto;
+}
+.deploy-panel .panel-header {
+  font-weight: 600;
+}
+.deploy-panel .badge {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  background: #eef2f7;
+  color: #475569;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+}
+.deploy-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.deploy-body .muted {
+  color: #64748b;
+  font-size: 0.85rem;
+  margin: 0;
+}
+.deploy-body button.primary {
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.deploy-body button.primary:disabled {
+  background: #94a3b8;
+  cursor: default;
+}
+.deploy-url {
+  font-size: 0.85rem;
+  margin: 0;
+  word-break: break-all;
+}
+.deploy-error {
+  color: #b91c1c;
+  font-size: 0.85rem;
+  margin: 0;
+}
+.deploy-log {
+  background: #0f172a;
+  color: #cbd5e1;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  border-radius: 8px;
+  padding: 0.5rem;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  margin: 0;
+}

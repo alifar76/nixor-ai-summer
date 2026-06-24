@@ -53,6 +53,22 @@ class Settings(BaseSettings):
     azure_openai_deployment: str = "gpt-4.1-mini"
     azure_openai_api_version: str = "2024-10-21"
 
+    # --- Server-side deploy (Session 3 one-click "Deploy to Azure") ---
+    # The platform deploys each student's app into THEIR resource group on their behalf,
+    # using a service principal (the master provisioning credential). Students never need
+    # their own `az login`. Scope safety comes from targeting only their RG/web app, which
+    # are server-controlled (read from StudentSandbox), never from user input.
+    # Leave blank to disable the deploy endpoint (it returns a clear 503).
+    azure_client_id: str = ""
+    azure_client_secret: str = ""
+    azure_tenant_id: str = ""
+    azure_subscription_id: str = ""
+    # Runtime/SKU for the student web apps. F1 is free; bump to B1 for demo-day warmth.
+    deploy_runtime: str = "PYTHON:3.11"
+    deploy_sku: str = "F1"
+    # Hard cap on a single deploy so a hung `az` can't run forever (seconds).
+    deploy_timeout_sec: int = 600
+
     # --- Per-student workspace containers ---
     workspace_driver: str = "local"        # local | docker
     workspace_image: str = "nixor-workspace:latest"

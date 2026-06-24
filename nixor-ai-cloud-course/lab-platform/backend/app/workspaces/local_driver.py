@@ -258,6 +258,15 @@ class LocalWorkspaceManager(WorkspaceManager):
     def _workspace_dir(self, user_id: int) -> pathlib.Path:
         return self._root() / f"user-{user_id}"
 
+    def workspace_path(self, user_id: int) -> str:
+        """Absolute host path of the student's workspace dir (the files to deploy).
+
+        Public accessor used by the server-side deploy flow (`az webapp up` runs from
+        here). Ensures the workspace exists first so a deploy can't race a fresh login.
+        """
+        self.ensure_workspace(user_id)
+        return str(self._workspace_dir(user_id))
+
     def _seed_workspace(self, target: pathlib.Path) -> None:
         """Restore the starter template into the workspace.
 

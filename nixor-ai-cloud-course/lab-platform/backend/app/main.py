@@ -27,6 +27,7 @@ from .routers import (
     auth_routes,
     chat,
     course_routes,
+    deploy,
     files,
     terminal,
     workspace,
@@ -55,6 +56,7 @@ app.include_router(workspace.router)
 app.include_router(files.router)
 app.include_router(chat.router)
 app.include_router(admin.router)
+app.include_router(deploy.router)
 app.include_router(terminal.router)
 
 

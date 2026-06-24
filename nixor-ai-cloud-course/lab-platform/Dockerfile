@@ -28,6 +28,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         bash coreutils procps nano git curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+# Azure CLI — used by the server-side one-click deploy (Session 3) to run
+# `az webapp up` into each student's resource group on their behalf. Installed in
+# the runtime image (root-owned, on PATH); the jailed student terminal does NOT
+# bind it in, so students never get ambient `az` access — only the backend uses it.
+RUN curl -sL https://aka.ms/InstallAzureCLIDeb | bash \
+    && rm -rf /var/lib/apt/lists/*
+
 # Sandbox user that every terminal drops to. uid/gid 1000 must match
 # LOCAL_SANDBOX_UID/GID in the environment.
 RUN useradd -m -u 1000 -s /bin/bash sandbox

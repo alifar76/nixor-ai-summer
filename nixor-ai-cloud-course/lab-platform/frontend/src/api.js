@@ -83,6 +83,41 @@ export class ApiClient {
     });
   }
 
+  sandbox() {
+    return this._json("/api/workspace/sandbox");
+  }
+
+  deployCmd() {
+    return this._json("/api/workspace/deploy-cmd");
+  }
+
+  // Server-side one-click deploy. Streams SSE events: {step}, {log}, {url}, {error},
+  // {done, ok}. onEvent is called for each parsed payload.
+  async deploy(onEvent) {
+    const res = await fetch("/api/workspace/deploy", {
+      method: "POST",
+      headers: this._headers({ "Content-Type": "application/json" }),
+    });
+    if (!res.ok || !res.body) {
+      throw new Error("Deploy request failed");
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const events = buffer.split("\n\n");
+      buffer = events.pop() || "";
+      for (const evt of events) {
+        const line = evt.split("\n").find((l) => l.startsWith("data:"));
+        if (!line) continue;
+        onEvent(JSON.parse(line.slice(5).trim()));
+      }
+    }
+  }
+
   async chat(messages, context, onDelta) {
     const res = await fetch("/api/chat", {
       method: "POST",

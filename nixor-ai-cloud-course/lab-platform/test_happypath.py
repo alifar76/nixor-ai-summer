@@ -390,6 +390,34 @@ def test_day3(c: Client) -> None:
             log.info("     PUT /api/workspace/sandbox/<user_id>")
             log.info("     { resource_group, webapp_name, location, azure_openai_endpoint, ... }")
 
+    # --- one-click deploy endpoint is wired and streams a terminal event ---
+    # Safe for this test user: with no sandbox provisioned, deploy returns a clean
+    # error event and stops BEFORE any Azure action — it never deploys anything here.
+    try:
+        r = c.session.post(f"{c.base}/api/workspace/deploy", headers=c._headers(),
+                           stream=True, timeout=30)
+        saw_terminal = False
+        first_payloads = []
+        for raw in r.iter_lines():
+            if not raw:
+                continue
+            text = raw.decode("utf-8", "replace")
+            if text.startswith("data:"):
+                try:
+                    payload = json.loads(text[5:].strip())
+                except ValueError:
+                    continue
+                first_payloads.append(payload)
+                if "done" in payload:
+                    saw_terminal = True
+                    break
+        r.close()
+        log.debug("Deploy stream payloads: %s", first_payloads[:6])
+        check("POST /api/workspace/deploy streams and terminates cleanly", saw_terminal,
+              str(first_payloads[:3]))
+    except Exception as exc:  # noqa: BLE001 - report, don't crash the suite
+        check("POST /api/workspace/deploy reachable", False, str(exc))
+
     # --- progress: mark all session-3 steps complete, then verify ---
     r = c.get("/api/course")
     if r.status_code == 200:

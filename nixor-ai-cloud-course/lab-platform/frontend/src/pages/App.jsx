@@ -4,6 +4,7 @@ import { api } from "../api";
 import { AuthForm } from "../components/AuthForm";
 import { ChatPanel } from "../components/ChatPanel";
 import { CoursePanel } from "../components/CoursePanel";
+import { DeployPanel } from "../components/DeployPanel";
 import { EditorPanel } from "../components/EditorPanel";
 import { TerminalPanel } from "../components/TerminalPanel";
 
@@ -222,6 +223,7 @@ export function App() {
             completedSet={completedSet}
             onToggleStep={toggleStep}
           />
+          <DeployPanel />
         </div>
 
         {!isNarrow && (
