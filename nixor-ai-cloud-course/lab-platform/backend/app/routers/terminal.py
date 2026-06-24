@@ -191,6 +191,11 @@ async def terminal_ws(
                     is_blocked, reason = guard.check(data)
                     if is_blocked:
                         await websocket.send_bytes(f"\r\n\x1b[31m{reason}\x1b[0m\r\n".encode())
+                        # Send Ctrl+C to the PTY to clear bash's readline buffer.
+                        # Characters are forwarded keystroke-by-keystroke, so bash already
+                        # has the dangerous command buffered by the time Enter arrives.
+                        # Without this, a bare Enter on the next keypress re-executes it.
+                        await loop.run_in_executor(None, sock.sendall, b"\x03")
                         continue
                 await loop.run_in_executor(None, sock.sendall, data.encode("utf-8"))
             elif mtype == "resize":
