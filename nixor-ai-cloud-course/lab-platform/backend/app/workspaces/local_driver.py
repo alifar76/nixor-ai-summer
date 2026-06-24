@@ -179,10 +179,11 @@ def _write_global_python_shims() -> None:
         "python": f'#!/bin/sh\nexec "{py}" "$@"\n',
         "python3": f'#!/bin/sh\nexec "{py}" "$@"\n',
         # pip calls os.getcwd() on startup; if the shell's cwd was deleted (e.g. after
-        # rm -rf wiped the workspace) that raises FileNotFoundError. cd to / first so
-        # pip always has a valid cwd regardless of what the shell's cwd is.
-        "pip": f'#!/bin/sh\ncd / 2>/dev/null || true\nexec "{py}" -m pip "$@"\n',
-        "pip3": f'#!/bin/sh\ncd / 2>/dev/null || true\nexec "{py}" -m pip "$@"\n',
+        # rm -rf wiped the workspace) that raises FileNotFoundError. Only fall back to a
+        # valid dir when the current one is gone — otherwise stay put so relative paths
+        # like `pip install -r requirements.txt` still resolve.
+        "pip": f'#!/bin/sh\ncd . 2>/dev/null || cd "${{HOME:-/}}" 2>/dev/null || cd /\nexec "{py}" -m pip "$@"\n',
+        "pip3": f'#!/bin/sh\ncd . 2>/dev/null || cd "${{HOME:-/}}" 2>/dev/null || cd /\nexec "{py}" -m pip "$@"\n',
     }
     for name, body in shims.items():
         path = os.path.join(_GLOBAL_SHIM_DIR, name)
