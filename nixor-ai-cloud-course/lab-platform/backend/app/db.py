@@ -49,12 +49,15 @@ def _prepare_sqlite_dir() -> None:
         return
     parent = db_file.parent
     parent.mkdir(parents=True, exist_ok=True)
-    # Lock the directory down to the owner (the API process, which runs as root on
-    # App Service). The unprivileged terminal sandbox user then cannot delete the DB.
-    try:
-        parent.chmod(0o700)
-    except OSError:
-        logger.debug("Could not chmod DB directory %s", parent, exc_info=True)
+    # Lock the dedicated DB directory down to the owner (the API process, which runs as
+    # root on App Service) so the unprivileged terminal sandbox user cannot delete the DB.
+    # Only for absolute paths (the production protected dir); never touch a relative
+    # local-dev path, whose parent is the developer's working directory.
+    if db_file.is_absolute():
+        try:
+            parent.chmod(0o700)
+        except OSError:
+            logger.debug("Could not chmod DB directory %s", parent, exc_info=True)
 
 
 def restore_from_backup() -> None:
