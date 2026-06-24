@@ -16,9 +16,11 @@ Your app runs on a dedicated cluster of 5 Azure VMs managed by the course platfo
 1. Your workspace is zipped and sent to your assigned VM.
 2. A Docker image is built from your code on that VM.
 3. A container starts, listening on your port.
-4. A public URL appears — that's your live app.
+4. A public URL appears — something like `http://nixornode-3.eastus.cloudapp.azure.com:9004`.
 
-This is the real deployment model: code → image → running container → public URL.
+That URL breaks down as: `http://` + hostname of your assigned VM + `:` + your port. That's your live app, reachable by anyone on the internet.
+
+This is the real deployment model: **code → image → running container → public URL.**
 
 ## Steps
 
