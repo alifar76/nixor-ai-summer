@@ -19,10 +19,22 @@ nixor-ai-cloud-course/
 │   ├── main.bicep         ← per-student resource group (Azure OpenAI + App Service)
 │   ├── policy-*.bicep     ← guardrail: deny expensive resource types
 │   └── provision_student.py  ← orchestrates: invite → resource group → deploy → grant
-└── platform/              ← the course website (Claude Code builds most of this)
-    ├── backend/           ← FastAPI: enrollment, provisioning trigger, progress API
+└── platform/              ← original skeleton/spec for the course website
+    ├── backend/           ← FastAPI stub: enrollment, provisioning trigger, progress API
     └── frontend/          ← spec for the student-facing walkthrough site
+
+lab-platform/             ← the BUILT teaching website (what students actually use)
+├── backend/              ← FastAPI: auth, progress, in-browser terminal + editor + chatbot
+├── frontend/             ← React app (Monaco editor, xterm terminal)
+├── Dockerfile            ← builds the platform image (frontend + FastAPI runtime)
+└── infra/vm/             ← VM + privileged Docker deployment (see lab-platform/README.md)
 ```
+
+> **Two layers, don't confuse them.** `platform/` was the initial skeleton/spec; the
+> working implementation lives in **`lab-platform/`** and is deployed as one privileged
+> Docker container on an Azure VM (the per-terminal isolation jail needs `CAP_SYS_ADMIN`,
+> which App Service can't grant). That is a separate concern from the per-student **Azure
+> sandboxes** below, which each student gets provisioned to deploy *their own* app.
 
 ## The architecture in one picture
 
