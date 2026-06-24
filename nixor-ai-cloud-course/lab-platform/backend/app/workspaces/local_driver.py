@@ -146,7 +146,12 @@ def jail_self_test() -> bool:
     return os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0
 
 
-_GLOBAL_SHIM_DIR = "/var/lib/nixor-lab/bin"
+# Root-owned dir holding python/pip shims for the terminal. It must NOT live under the
+# DB dir (/var/lib/nixor-lab), which is chmod 0700 and therefore not traversable by the
+# unprivileged shell — a shim there would be unreachable. Here every parent (/var,
+# /var/lib) is the standard 0755, so uid 1000 can traverse in and exec the scripts, but
+# the dir itself is root-owned 0755 so uid 1000 cannot unlink or modify them.
+_GLOBAL_SHIM_DIR = "/var/lib/nixor-bin"
 
 
 def _write_global_python_shims() -> None:
@@ -164,6 +169,9 @@ def _write_global_python_shims() -> None:
         return
     try:
         os.makedirs(_GLOBAL_SHIM_DIR, mode=0o755, exist_ok=True)
+        # makedirs honours umask, which could strip the traverse/read bits and make the
+        # dir unreachable by uid 1000. Force 0755 explicitly so the shell can get in.
+        os.chmod(_GLOBAL_SHIM_DIR, 0o755)
     except OSError:
         logger.warning("Could not create global shim dir %s", _GLOBAL_SHIM_DIR, exc_info=True)
         return
