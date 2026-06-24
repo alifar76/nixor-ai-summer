@@ -259,15 +259,23 @@ class LocalWorkspaceManager(WorkspaceManager):
         return self._root() / f"user-{user_id}"
 
     def _seed_workspace(self, target: pathlib.Path) -> None:
+        """Restore the starter template into the workspace.
+
+        Per-entry (not all-or-nothing): copy any top-level template file/dir that is
+        missing, and leave everything else alone. This means a student who runs
+        ``rm -rf /`` (which the jail confines to wiping their own workspace) gets the
+        starter files back the next time a terminal opens or the editor refreshes,
+        while files they created themselves are preserved.
+        """
         template = pathlib.Path(settings.local_workspace_template_dir)
         if not template.exists() or not template.is_dir():
-            return
-        if any(target.iterdir()):
             return
         for item in template.iterdir():
             if item.name.startswith(".") and item.name not in {".env.example", ".gitignore"}:
                 continue
             dst = target / item.name
+            if dst.exists():
+                continue
             if item.is_dir():
                 shutil.copytree(item, dst)
             else:
