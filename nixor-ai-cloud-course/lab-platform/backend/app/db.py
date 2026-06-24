@@ -34,6 +34,15 @@ engine = create_engine(
 )
 
 
+def _ensure_schema() -> None:
+    # Defensive self-heal for this short-course environment:
+    # if SQLite file is recreated (for example after accidental deletion),
+    # lazily recreate tables on the next request.
+    from . import models  # noqa: F401
+
+    SQLModel.metadata.create_all(engine)
+
+
 def init_db() -> None:
     """Create tables. Import models first so they're registered on SQLModel.metadata."""
     from . import models  # noqa: F401
@@ -43,5 +52,7 @@ def init_db() -> None:
 
 def get_session() -> Iterator[Session]:
     """FastAPI dependency that yields a DB session."""
+    if _is_sqlite:
+        _ensure_schema()
     with Session(engine) as session:
         yield session
