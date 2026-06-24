@@ -1,0 +1,77 @@
+#cloud-config
+# Cloud-init for the Nixor AI Lab VM. deploy_vm.sh substitutes the __PLACEHOLDERS__ and
+# passes the result as --custom-data. This installs Docker, the Azure CLI, and Caddy
+# (auto-HTTPS reverse proxy), then installs a systemd unit that runs the platform
+# container. NO SECRETS live here — runtime config is pushed separately into
+# /etc/nixor-lab.env by deploy_vm.sh via `az vm run-command`.
+
+package_update: true
+packages:
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - gnupg
+  - lsb-release
+  - debian-keyring
+  - debian-archive-keyring
+
+write_files:
+  # Caddy: terminate TLS for our domain and reverse-proxy to the container on :8000.
+  - path: /etc/caddy/Caddyfile
+    content: |
+      __DOMAIN__ {
+          reverse_proxy 127.0.0.1:8000 {
+              # websockets (the terminal) are proxied transparently by Caddy.
+              flush_interval -1
+          }
+      }
+
+  # systemd unit that (re)starts the container. Reads its image/registry config from
+  # /etc/nixor-lab.runtime and the app config from /etc/nixor-lab.env.
+  - path: /etc/systemd/system/nixor-lab.service
+    content: |
+      [Unit]
+      Description=Nixor AI Lab platform container
+      Requires=docker.service
+      After=docker.service network-online.target
+      Wants=network-online.target
+
+      [Service]
+      EnvironmentFile=/etc/nixor-lab.runtime
+      ExecStart=/opt/nixor/run-container.sh
+      Restart=always
+      RestartSec=5
+      # Wait until deploy_vm.sh has written the app env file before the first start.
+      ExecStartPre=/bin/sh -c 'until [ -f /etc/nixor-lab.env ]; do sleep 3; done'
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /etc/nixor-lab.runtime
+    content: |
+      NIXOR_IMAGE=__IMAGE__
+      NIXOR_ACR=__ACR_NAME__
+      NIXOR_ENV_FILE=/etc/nixor-lab.env
+
+runcmd:
+  # --- Docker -------------------------------------------------------------------------
+  - install -m 0755 -d /etc/apt/keyrings
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  - chmod a+r /etc/apt/keyrings/docker.asc
+  - >
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc]
+    https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable"
+    > /etc/apt/sources.list.d/docker.list
+  # --- Azure CLI (for `az acr login` via managed identity) ----------------------------
+  - curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+  # --- Caddy --------------------------------------------------------------------------
+  - curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  - curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' > /etc/apt/sources.list.d/caddy-stable.list
+  - apt-get update
+  - apt-get install -y docker-ce docker-ce-cli containerd.io caddy
+  - systemctl enable --now docker
+  - systemctl enable --now caddy
+  # Place the container runner. deploy_vm.sh re-pushes the latest copy too, but seed it now.
+  - mkdir -p /opt/nixor
+  - systemctl daemon-reload
+  - systemctl enable nixor-lab.service

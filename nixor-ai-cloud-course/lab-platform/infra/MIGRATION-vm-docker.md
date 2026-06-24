@@ -21,9 +21,16 @@ The jail needs `unshare(CLONE_NEWNS)` + `mount()`, which require `CAP_SYS_ADMIN`
 | **VM + Docker `--privileged`** | **Yes** | **Yes** |
 | AKS w/ `securityContext.privileged` | Yes | Yes (heavier ops) |
 
-Recommendation: **single Linux VM running the container with `--privileged`.** Cheapest,
-simplest, single-tenant is fine for one class. AKS is overkill until we need
-autoscaling/multi-node. The AKS variant is sketched at the bottom.
+Recommendation: **single Linux VM running the container with `--privileged`.** Simplest,
+single-tenant is fine for one class, and scaling up (bigger VM) beats scaling out
+(which would need a shared DB + websocket session affinity). AKS is overkill until we
+need autoscaling/multi-node. The AKS variant is sketched at the bottom.
+
+**Implemented under `infra/vm/`** (built on the `dev` branch) — see
+`infra/vm/README.md`. Sizing for **40+ concurrent students**: default `Standard_D16s_v5`
+(16 vCPU / 64 GB), override to `Standard_D32s_v5` for more headroom. The image is built
+server-side with `az acr build` from your local checkout, so the branch you deploy from
+is what runs.
 
 ---
 
