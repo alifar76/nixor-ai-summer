@@ -98,6 +98,28 @@ def section(title: str) -> None:
     log.info("=" * 60)
 
 
+def jbody(r) -> dict | list | None:
+    """Parse a response body as JSON, returning None if it isn't JSON.
+
+    Guards against the SPA catch-all: unknown /api/* paths return index.html with
+    a 200, so a bare r.json() would crash. None lets callers fail a check cleanly.
+    """
+    ctype = r.headers.get("content-type", "")
+    if "application/json" not in ctype:
+        log.debug("Non-JSON response (%s) from %s: %s", ctype, r.url, r.text[:200])
+        return None
+    try:
+        return r.json()
+    except ValueError:
+        log.debug("Body claimed JSON but failed to parse: %s", r.text[:200])
+        return None
+
+
+def is_json_200(r) -> bool:
+    """True only if the response is 200 AND a real JSON body (not the SPA fallback)."""
+    return r.status_code == 200 and jbody(r) is not None
+
+
 # ---------------------------------------------------------------------------
 # HTTP helpers
 # ---------------------------------------------------------------------------
@@ -185,10 +207,9 @@ def test_day0(c: Client, email: str, password: str) -> bool:
               str(r.json()))
 
     # --- starter files exist in editor ---
-    r = c.get("/api/files/list")
-    check("File list returns 200", r.status_code == 200, r.text[:200])
-    if r.status_code == 200:
-        files_data = r.json()
+    r = c.get("/api/files/tree")
+    files_data = jbody(r)
+    if check("File tree returns JSON 200", is_json_200(r), r.text[:200]):
         paths = [f["path"] for f in files_data.get("files", [])]
         log.debug("Workspace files: %s", paths)
         check("app.py present in workspace", "app.py" in paths, str(paths))
@@ -197,9 +218,10 @@ def test_day0(c: Client, email: str, password: str) -> bool:
         check("README.md present in workspace", "README.md" in paths, str(paths))
 
     # --- read app.py content ---
-    r = c.get("/api/files/read?path=app.py")
-    if check("Can read app.py", r.status_code == 200, r.text[:100]):
-        content = r.json().get("content", "")
+    r = c.get("/api/files?path=app.py")
+    body = jbody(r)
+    if check("Can read app.py", is_json_200(r), r.text[:100]):
+        content = body.get("content", "")
         check("app.py contains APP_TITLE", "APP_TITLE" in content)
         check("app.py contains SYSTEM_PROMPT", "SYSTEM_PROMPT" in content)
         check("app.py contains load_dotenv", "load_dotenv" in content)
@@ -232,20 +254,20 @@ def test_day1(c: Client) -> None:
             step_id = None
 
     # --- edit APP_TITLE via files API (simulating Day 1 task 2) ---
-    r = c.get("/api/files/read?path=app.py")
-    if r.status_code == 200:
-        original = r.json()["content"]
+    r = c.get("/api/files?path=app.py")
+    if is_json_200(r):
+        original = jbody(r)["content"]
         edited = original.replace(
             'APP_TITLE = "My AI App"',
             'APP_TITLE = "My Nixor AI App"',
         )
-        r2 = c.post("/api/files/write", {"path": "app.py", "content": edited})
+        r2 = c.put("/api/files", {"path": "app.py", "content": edited})
         if check("Edit APP_TITLE via files API", r2.status_code == 200, r2.text[:200]):
             # Verify the change persisted
-            r3 = c.get("/api/files/read?path=app.py")
-            if r3.status_code == 200:
+            r3 = c.get("/api/files?path=app.py")
+            if is_json_200(r3):
                 check("Edit persisted on read-back",
-                      "My Nixor AI App" in r3.json()["content"])
+                      "My Nixor AI App" in jbody(r3)["content"])
 
     # --- progress tracking ---
     r = c.get("/api/progress")
@@ -284,9 +306,9 @@ def test_day2(c: Client) -> None:
     section("DAY 2 — Build Core Product Skills")
 
     # --- rewrite SYSTEM_PROMPT (simulating Day 2 task 2) ---
-    r = c.get("/api/files/read?path=app.py")
-    if r.status_code == 200:
-        content = r.json()["content"]
+    r = c.get("/api/files?path=app.py")
+    if is_json_200(r):
+        content = jbody(r)["content"]
         new_prompt = (
             '"You are a helpful study buddy for A-level Computer Science students in Karachi. '
             'You explain algorithms clearly using real-world Karachi examples."'
@@ -301,7 +323,7 @@ def test_day2(c: Client) -> None:
         )
         if "SYSTEM_PROMPT" not in edited:
             edited = content  # fallback if regex missed
-        r2 = c.post("/api/files/write", {"path": "app.py", "content": edited})
+        r2 = c.put("/api/files", {"path": "app.py", "content": edited})
         check("Rewrite SYSTEM_PROMPT via files API", r2.status_code == 200, r2.text[:200])
 
     # --- chatbot as pair programmer (in-platform Chat pane) ---
@@ -330,11 +352,11 @@ def test_day2(c: Client) -> None:
     check("Platform still healthy after Day 2 operations", r.status_code == 200, r.text[:100])
 
     # --- write requirements.txt to confirm editor writes work for new deps ---
-    r = c.get("/api/files/read?path=requirements.txt")
-    if r.status_code == 200:
-        orig_reqs = r.json()["content"]
+    r = c.get("/api/files?path=requirements.txt")
+    if is_json_200(r):
+        orig_reqs = jbody(r)["content"]
         new_reqs = orig_reqs.rstrip() + "\n# added in session 2\n"
-        r2 = c.post("/api/files/write", {"path": "requirements.txt", "content": new_reqs})
+        r2 = c.put("/api/files", {"path": "requirements.txt", "content": new_reqs})
         check("Write requirements.txt (simulating pip install step)", r2.status_code == 200,
               r2.text[:200])
 
@@ -476,13 +498,13 @@ def test_day4(c: Client) -> None:
     section("DAY 4 — Polish, Explain, and Demo  (app: Karachi Street Food Guide)")
 
     # --- Write the Day 4 polished app ---
-    r = c.post("/api/files/write", {"path": "app.py", "content": _DAY4_APP_PY})
+    r = c.put("/api/files", {"path": "app.py", "content": _DAY4_APP_PY})
     if check("Write Day 4 app.py (Karachi Street Food Guide)", r.status_code == 200,
              r.text[:200]):
         # Verify key content
-        r2 = c.get("/api/files/read?path=app.py")
-        if r2.status_code == 200:
-            content = r2.json()["content"]
+        r2 = c.get("/api/files?path=app.py")
+        if is_json_200(r2):
+            content = jbody(r2)["content"]
             check("APP_TITLE updated to Karachi Street Food Guide",
                   "Karachi Street Food Guide" in content)
             check("SYSTEM_PROMPT updated with food expert persona",
