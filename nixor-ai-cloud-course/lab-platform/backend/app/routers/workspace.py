@@ -1,21 +1,26 @@
-"""Workspace lifecycle endpoints (the per-student sandbox container)."""
+"""Workspace lifecycle + per-student Azure sandbox endpoints."""
 
 from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 
-from ..auth import get_current_user
+from ..auth import get_current_instructor, get_current_user
+from ..config import settings
 from ..db import get_session
-from ..models import User, Workspace
+from ..models import SandboxInfo, SandboxUpdate, StudentSandbox, User, Workspace
 from ..models import _utcnow
 from ..workspaces import manager
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/workspace", tags=["workspace"])
 
+
+# --------------------------------------------------------------------------- #
+# Container lifecycle
+# --------------------------------------------------------------------------- #
 
 def _record(session: Session, user_id: int, info) -> None:
     ws = session.exec(select(Workspace).where(Workspace.user_id == user_id)).first()
@@ -47,3 +52,168 @@ def workspace_status(user: User = Depends(get_current_user)):
 def stop(user: User = Depends(get_current_user)):
     manager.stop_workspace(user.id)
     return {"status": "stopped"}
+
+
+# --------------------------------------------------------------------------- #
+# Per-student Azure sandbox info (Sessions 1 & 3: deploy target)
+# --------------------------------------------------------------------------- #
+
+def _get_sandbox(session: Session, user_id: int) -> StudentSandbox | None:
+    return session.exec(select(StudentSandbox).where(StudentSandbox.user_id == user_id)).first()
+
+
+@router.get("/sandbox", response_model=SandboxInfo)
+def get_sandbox(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> SandboxInfo:
+    """Return this student's Azure resource info.
+
+    If no per-student sandbox has been provisioned yet, returns placeholder values
+    so the frontend can still show the deploy command section (just with empty fields).
+    """
+    sb = _get_sandbox(session, user.id)
+    if sb is None:
+        return SandboxInfo(
+            resource_group="",
+            webapp_name="",
+            location="",
+            deploy_url="",
+            status="pending",
+            has_own_ai_credentials=False,
+        )
+    return SandboxInfo(
+        resource_group=sb.resource_group,
+        webapp_name=sb.webapp_name,
+        location=sb.location,
+        deploy_url=sb.deploy_url,
+        status=sb.status,
+        has_own_ai_credentials=bool(sb.azure_openai_endpoint and sb.azure_openai_api_key),
+    )
+
+
+@router.get("/deploy-cmd")
+def deploy_cmd(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Return the exact az webapp up command pre-filled with this student's resources.
+
+    Students paste this into the terminal (Sessions 1 & 3). The command includes
+    startup-command and port so the Streamlit app binds correctly on App Service.
+    """
+    sb = _get_sandbox(session, user.id)
+    if sb is None or not sb.webapp_name or not sb.resource_group:
+        return {
+            "ready": False,
+            "message": "Your Azure sandbox hasn't been set up yet. Ask your instructor.",
+            "command": "",
+        }
+
+    # Determine which OpenAI endpoint to wire into the deployed app:
+    # prefer the student's own scoped credentials, fall back to the platform shared ones.
+    endpoint = sb.azure_openai_endpoint or settings.azure_openai_endpoint
+    api_key = sb.azure_openai_api_key or settings.azure_openai_api_key
+    deployment = sb.azure_openai_deployment or settings.azure_openai_deployment
+    api_version = settings.azure_openai_api_version
+
+    env_settings = (
+        f"AZURE_OPENAI_ENDPOINT={endpoint} "
+        f"AZURE_OPENAI_API_KEY={api_key} "
+        f"AZURE_OPENAI_DEPLOYMENT={deployment} "
+        f"AZURE_OPENAI_API_VERSION={api_version} "
+        f"WEBSITES_PORT=8000"
+    )
+
+    command = (
+        f"az webapp up \\\n"
+        f"  --name {sb.webapp_name} \\\n"
+        f"  --resource-group {sb.resource_group} \\\n"
+        f"  --runtime PYTHON:3.11 \\\n"
+        f"  --sku F1 \\\n"
+        f"  --startup-file 'python -m streamlit run app.py --server.port 8000 --server.address 0.0.0.0'"
+    )
+    settings_cmd = (
+        f"\n\n# Also set App Settings (run once after first deploy):\n"
+        f"az webapp config appsettings set \\\n"
+        f"  --name {sb.webapp_name} \\\n"
+        f"  --resource-group {sb.resource_group} \\\n"
+        f"  --settings {env_settings}"
+    )
+
+    return {
+        "ready": True,
+        "webapp_name": sb.webapp_name,
+        "resource_group": sb.resource_group,
+        "deploy_url": sb.deploy_url or f"https://{sb.webapp_name}.azurewebsites.net",
+        "command": command + settings_cmd,
+        "message": "Paste this into your terminal from the /workspace directory.",
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Instructor-only: provision / update sandbox info for a student
+# --------------------------------------------------------------------------- #
+
+@router.put("/sandbox/{user_id}", response_model=SandboxInfo)
+def set_sandbox(
+    user_id: int,
+    body: SandboxUpdate,
+    _: User = Depends(get_current_instructor),
+    session: Session = Depends(get_session),
+) -> SandboxInfo:
+    """Set or update the Azure sandbox info for a student (instructor only).
+
+    Call this after running provision_student.py for each student. Idempotent.
+    """
+    target = session.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    sb = _get_sandbox(session, user_id)
+    if sb is None:
+        sb = StudentSandbox(user_id=user_id)
+        session.add(sb)
+
+    sb.resource_group = body.resource_group
+    sb.webapp_name = body.webapp_name
+    sb.location = body.location
+    sb.deploy_url = body.deploy_url
+    sb.azure_openai_endpoint = body.azure_openai_endpoint
+    sb.azure_openai_api_key = body.azure_openai_api_key
+    sb.azure_openai_deployment = body.azure_openai_deployment
+    sb.status = body.status
+    sb.updated_at = _utcnow()
+    session.commit()
+    session.refresh(sb)
+
+    return SandboxInfo(
+        resource_group=sb.resource_group,
+        webapp_name=sb.webapp_name,
+        location=sb.location,
+        deploy_url=sb.deploy_url,
+        status=sb.status,
+        has_own_ai_credentials=bool(sb.azure_openai_endpoint and sb.azure_openai_api_key),
+    )
+
+
+@router.get("/sandbox/all")
+def all_sandboxes(
+    _: User = Depends(get_current_instructor),
+    session: Session = Depends(get_session),
+) -> dict:
+    """List every student's sandbox status (instructor dashboard)."""
+    rows = session.exec(select(StudentSandbox)).all()
+    return {
+        "sandboxes": [
+            {
+                "user_id": r.user_id,
+                "resource_group": r.resource_group,
+                "webapp_name": r.webapp_name,
+                "deploy_url": r.deploy_url,
+                "status": r.status,
+                "updated_at": r.updated_at.isoformat(),
+            }
+            for r in rows
+        ]
+    }

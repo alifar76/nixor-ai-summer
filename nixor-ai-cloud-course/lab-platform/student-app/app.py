@@ -12,7 +12,11 @@ The two lines you'll edit most are marked with  # 👈 EDIT THIS
 import os
 
 import streamlit as st
+from dotenv import load_dotenv
 from openai import AzureOpenAI
+
+# Load .env when running locally (no-op in the cloud where env vars are set directly).
+load_dotenv()
 
 # ---------------------------------------------------------------------------
 # 1. Give your app a name and a personality

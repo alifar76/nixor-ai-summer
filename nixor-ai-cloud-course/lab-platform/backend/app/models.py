@@ -47,6 +47,31 @@ class Workspace(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_utcnow)
 
 
+class StudentSandbox(SQLModel, table=True):
+    """Per-student Azure resources provisioned for the course (Sessions 1 & 3 deploy target).
+
+    The instructor (or provision_student.py) populates these after provisioning.
+    Students read them via GET /api/workspace/sandbox to get their pre-filled deploy command.
+    """
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True, unique=True, foreign_key="user.id")
+    # Azure resource group and App Service Web App created for this student.
+    resource_group: str = ""               # e.g. rg-nixor-team01
+    webapp_name: str = ""                  # e.g. nixor-team01-app
+    location: str = "eastus"
+    # The deployed app's public URL (set once the first deploy succeeds).
+    deploy_url: str = ""
+    # The student's Azure OpenAI endpoint/key (scoped to their RG, if provisioned).
+    # If blank, the platform's shared credentials are used for local streamlit runs.
+    azure_openai_endpoint: str = ""
+    azure_openai_api_key: str = ""
+    azure_openai_deployment: str = ""
+    status: str = "pending"               # pending | ready | deployed | error
+    updated_at: datetime = Field(default_factory=_utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
 # --------------------------------------------------------------------------- #
 # API schemas
 # --------------------------------------------------------------------------- #
@@ -89,6 +114,28 @@ class ChatRequest(BaseModel):
     messages: list[ChatMessage]
     # Optional context the frontend can attach (e.g. the file the student is editing).
     context: str = ""
+
+
+class SandboxInfo(BaseModel):
+    """Public view of a student's Azure sandbox — safe to return to the student."""
+    resource_group: str
+    webapp_name: str
+    location: str
+    deploy_url: str
+    status: str
+    has_own_ai_credentials: bool
+
+
+class SandboxUpdate(BaseModel):
+    """Instructor-only: set or update per-student sandbox info."""
+    resource_group: str = ""
+    webapp_name: str = ""
+    location: str = "eastus"
+    deploy_url: str = ""
+    azure_openai_endpoint: str = ""
+    azure_openai_api_key: str = ""
+    azure_openai_deployment: str = ""
+    status: str = "ready"
 
 
 TokenResponse.model_rebuild()

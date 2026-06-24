@@ -356,6 +356,19 @@ class LocalWorkspaceManager(WorkspaceManager):
             "PIP_USER": "1",
             "LANG": "C.UTF-8",
         }
+        # Pass the platform's Azure OpenAI credentials into the terminal so
+        # `streamlit run app.py` can reach the model without the student needing to
+        # configure anything. Values are inherited from the server process env (set
+        # in /etc/nixor-lab.env at deploy time); if unset here they're simply absent.
+        for _key in (
+            "AZURE_OPENAI_ENDPOINT",
+            "AZURE_OPENAI_API_KEY",
+            "AZURE_OPENAI_DEPLOYMENT",
+            "AZURE_OPENAI_API_VERSION",
+        ):
+            _val = os.environ.get(_key, "")
+            if _val:
+                env[_key] = _val
         jail_root = settings.terminal_jail_root
         if jailed:
             # Pre-create the jail mount point as root on the host (best-effort).
