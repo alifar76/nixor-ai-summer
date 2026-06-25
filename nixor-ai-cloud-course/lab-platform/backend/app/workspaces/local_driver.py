@@ -380,8 +380,6 @@ class LocalWorkspaceManager(WorkspaceManager):
             "MODEL_GROK43_DEPLOYMENT",
             "MODEL_DEEPSEEK_V4_PRO_DEPLOYMENT",
             "MODEL_MISTRAL_MEDIUM_35_DEPLOYMENT",
-            "MODEL_FLUX2_PRO_DEPLOYMENT",
-            "MODEL_SORA2_DEPLOYMENT",
             "AI_MODEL_CATALOG_JSON",
         ):
             _val = os.environ.get(_key, "")

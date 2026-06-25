@@ -53,18 +53,22 @@ def ai_models(user: User = Depends(get_current_user)):
 @router.post("/chat")
 async def chat(body: ChatRequest, user: User = Depends(get_current_user)):
     _ = user
+    # The in-app coding tutor runs on the dedicated chat deployment (gpt-5.3). A request
+    # may still name a model; we only honour it if it's a chat-eligible Azure OpenAI entry
+    # in the catalog. Otherwise (the normal case — the 4-model catalog is deploy-only) we
+    # fall back to the dedicated chat deployment rather than rejecting the request.
     selected_id = (body.model_id or settings.chat_default_model_id).strip()
-    selected = next((m for m in settings.ai_models() if m.get("id") == selected_id), None)
-    if selected is None:
-        selected = next((m for m in settings.ai_models() if m.get("id") == settings.chat_default_model_id), None)
-    if selected is None:
-        raise HTTPException(status_code=503, detail="No AI model catalog is configured.")
-    if selected.get("provider") != "azure_openai" or not selected.get("chat_eligible", False):
-        raise HTTPException(
-            status_code=400,
-            detail="This model is available for student app development but not for in-UI chat yet.",
-        )
-    deployment = str(selected.get("model") or settings.azure_openai_deployment).strip()
+    selected = next(
+        (
+            m
+            for m in settings.ai_models()
+            if m.get("id") == selected_id
+            and m.get("provider") == "azure_openai"
+            and m.get("chat_eligible", False)
+        ),
+        None,
+    )
+    deployment = str((selected or {}).get("model") or settings.azure_openai_deployment).strip()
     if not deployment:
         raise HTTPException(status_code=503, detail="Azure chat deployment is not configured.")
     if not settings.azure_openai_endpoint or not settings.azure_openai_api_key:

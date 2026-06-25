@@ -51,24 +51,25 @@ class Settings(BaseSettings):
     # --- Azure AI Foundry (the in-app chatbot) ---
     azure_openai_endpoint: str = ""        # https://<resource>.openai.azure.com/  or  https://<resource>.cognitiveservices.azure.com/
     azure_openai_api_key: str = ""
-    azure_openai_deployment: str = "gpt-5-5"
+    # Deployment that backs the in-app coding chatbot (the platform tutor). This is a
+    # lighter/cheaper model than the deployable catalog below — gpt-5.3.
+    azure_openai_deployment: str = "oai-gpt53"
     azure_openai_api_version: str = "2024-10-21"
     # Azure AI Foundry endpoint/key for the broader multi-model catalog available to
     # students in terminal/workspace and deploy targets.
     azure_foundry_endpoint: str = ""
     azure_foundry_api_key: str = ""
-    # Deployment names for the 6 approved deployable models.
+    # Deployment names for the 4 approved deployable models.
     model_gpt55_deployment: str = "oai-gpt55"
     model_grok43_deployment: str = "xai-grok43"
     model_deepseek_v4_pro_deployment: str = "ds-v4pro"
     model_mistral_medium_35_deployment: str = "mstr-med35"
-    model_flux2_pro_deployment: str = "bfl-flux2"
-    model_sora2_deployment: str = "oai-sora2"
     # JSON override for the UI model catalog. If blank, built-in defaults are used.
     # Expected shape: [{"id","provider","label","model","input","output","chat_eligible"}...]
     ai_model_catalog_json: str = ""
-    # Model id for the built-in chatbot. Must match an entry in ai_models().
-    chat_default_model_id: str = "gpt-5.5"
+    # Model id for the built-in chatbot. The chatbot always falls back to
+    # azure_openai_deployment (gpt-5.3) when this id isn't a chat-eligible catalog entry.
+    chat_default_model_id: str = "gpt-5.3"
 
     # --- Server-side deploy (Session 3 one-click "Deploy to Azure") ---
     # The platform deploys each student's app into THEIR resource group on their behalf,
@@ -166,10 +167,10 @@ class Settings(BaseSettings):
                 "id": "gpt-5.5",
                 "provider": "azure_openai",
                 "label": "GPT-5.5",
-                "model": self.model_gpt55_deployment or self.azure_openai_deployment or "oai-gpt55",
+                "model": self.model_gpt55_deployment or "oai-gpt55",
                 "input": ["text", "image"],
                 "output": ["text"],
-                "chat_eligible": True,
+                "chat_eligible": False,
             },
             {
                 "id": "grok-4.3",
@@ -196,24 +197,6 @@ class Settings(BaseSettings):
                 "model": self.model_mistral_medium_35_deployment,
                 "input": ["text", "image"],
                 "output": ["text"],
-                "chat_eligible": False,
-            },
-            {
-                "id": "FLUX.2-pro",
-                "provider": "black-forest-labs",
-                "label": "FLUX.2-pro",
-                "model": self.model_flux2_pro_deployment,
-                "input": ["text", "image"],
-                "output": ["image"],
-                "chat_eligible": False,
-            },
-            {
-                "id": "sora-2",
-                "provider": "openai",
-                "label": "Sora 2",
-                "model": self.model_sora2_deployment,
-                "input": ["text", "image", "video"],
-                "output": ["video"],
                 "chat_eligible": False,
             },
         ]

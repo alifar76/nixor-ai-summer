@@ -3,7 +3,7 @@ Your AI App — Nixor AI + Cloud Course
 =====================================
 
 This is YOUR app. Right now it's a simple chatbot that talks to a real AI model
-(gpt-5.5 via deployment `gpt-5-5` by default) running on Microsoft Azure. Over the
+(gpt-5.5 via deployment `oai-gpt55` by default) running on Microsoft Azure. Over the
 course you'll make it your own:
 change its personality, give it a job, add features.
 
@@ -40,7 +40,7 @@ client = AzureOpenAI(
     azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
     api_version=os.environ.get("AZURE_OPENAI_API_VERSION", "2024-10-21"),
 )
-DEPLOYMENT = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-5-5")
+DEPLOYMENT = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "oai-gpt55")
 
 
 def ask_the_ai(messages: list[dict]) -> str:

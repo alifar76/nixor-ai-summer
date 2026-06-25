@@ -78,8 +78,6 @@ async def deploy(
     model_grok43_deployment: str = Header(default="", alias="x-model-grok43-deployment"),
     model_deepseek_v4_pro_deployment: str = Header(default="", alias="x-model-deepseek-v4-pro-deployment"),
     model_mistral_medium_35_deployment: str = Header(default="", alias="x-model-mistral-medium-35-deployment"),
-    model_flux2_pro_deployment: str = Header(default="", alias="x-model-flux2-pro-deployment"),
-    model_sora2_deployment: str = Header(default="", alias="x-model-sora2-deployment"),
     model_catalog_json: str = Header(default="", alias="x-model-catalog-json"),
 ):
     """Deploy a student's app.
@@ -130,8 +128,6 @@ async def deploy(
         ("MODEL_GROK43_DEPLOYMENT", model_grok43_deployment),
         ("MODEL_DEEPSEEK_V4_PRO_DEPLOYMENT", model_deepseek_v4_pro_deployment),
         ("MODEL_MISTRAL_MEDIUM_35_DEPLOYMENT", model_mistral_medium_35_deployment),
-        ("MODEL_FLUX2_PRO_DEPLOYMENT", model_flux2_pro_deployment),
-        ("MODEL_SORA2_DEPLOYMENT", model_sora2_deployment),
         ("AI_MODEL_CATALOG_JSON", model_catalog_json),
     ]
 

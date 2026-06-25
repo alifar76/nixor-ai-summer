@@ -146,7 +146,13 @@ def deploy_cmd(
     # prefer the student's own scoped credentials, fall back to the platform shared ones.
     endpoint = sb.azure_openai_endpoint or settings.azure_openai_endpoint
     api_key = sb.azure_openai_api_key or settings.azure_openai_api_key
-    deployment = sb.azure_openai_deployment or settings.azure_openai_deployment
+    # Student apps default to a deployable catalog model (gpt-5.5), not the platform
+    # chatbot's gpt-5.3 deployment.
+    deployment = (
+        sb.azure_openai_deployment
+        or settings.model_gpt55_deployment
+        or settings.azure_openai_deployment
+    )
     api_version = settings.azure_openai_api_version
 
     env_settings = (
@@ -160,8 +166,6 @@ def deploy_cmd(
         f"MODEL_GROK43_DEPLOYMENT={settings.model_grok43_deployment} "
         f"MODEL_DEEPSEEK_V4_PRO_DEPLOYMENT={settings.model_deepseek_v4_pro_deployment} "
         f"MODEL_MISTRAL_MEDIUM_35_DEPLOYMENT={settings.model_mistral_medium_35_deployment} "
-        f"MODEL_FLUX2_PRO_DEPLOYMENT={settings.model_flux2_pro_deployment} "
-        f"MODEL_SORA2_DEPLOYMENT={settings.model_sora2_deployment} "
         f"AI_MODEL_CATALOG_JSON={settings.ai_model_catalog_json} "
         f"WEBSITES_PORT=8000"
     )
