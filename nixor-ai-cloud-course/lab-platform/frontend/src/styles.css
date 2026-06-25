@@ -381,7 +381,7 @@ body.resizing {
   }
 }
 
-/* ----- Deploy panel (Session 3 one-click deploy) ----- */
+/* ----- Deploy panel (Session 3 cluster deploy) ----- */
 .deploy-panel {
   margin-top: 0.5rem;
   flex: 0 0 auto;
@@ -398,38 +398,263 @@ body.resizing {
   border-radius: 999px;
   padding: 0.1rem 0.5rem;
 }
+.badge-ready   { background: #dcfce7; color: #166534; }
+.badge-pending { background: #fef9c3; color: #713f12; }
+.badge-error   { background: #fee2e2; color: #991b1b; }
+
 .deploy-body {
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
+  gap: 0.5rem;
 }
-.deploy-body .muted {
+
+/* ── Slot card ── */
+.slot-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0.55rem 0.65rem;
+}
+.slot-title {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   color: #64748b;
-  font-size: 0.85rem;
+  margin-bottom: 0.4rem;
+}
+.slot-fields {
+  display: grid;
+  gap: 0.35rem;
+}
+.slot-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+}
+.slot-icon {
+  font-size: 1rem;
+  line-height: 1.2;
+}
+.slot-sub {
+  color: #64748b;
+  font-size: 0.75rem;
+  font-family: "IBM Plex Mono", monospace;
+}
+.slot-pending {
+  font-size: 0.82rem;
+  color: #64748b;
   margin: 0;
 }
-.deploy-body button.primary {
+
+/* ── Deploy button ── */
+.deploy-btn {
   background: #2563eb;
   color: white;
   border: none;
   border-radius: 8px;
-  padding: 0.5rem 0.75rem;
+  padding: 0.55rem 0.9rem;
   font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.deploy-btn:hover { background: #1d4ed8; }
+.deploy-btn:disabled { background: #94a3b8; cursor: default; }
+
+/* ── Pipeline ── */
+.pipeline {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0.5rem 0.55rem;
+  overflow-x: auto;
+}
+.pipe-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  position: relative;
+  opacity: 0.35;
+  transition: opacity 0.2s;
+  min-width: 52px;
+}
+.pipe-step.done   { opacity: 1; }
+.pipe-step.active { opacity: 1; }
+.pipe-icon {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+.pipe-step.active .pipe-icon {
+  animation: pulse-icon 0.9s ease-in-out infinite;
+}
+@keyframes pulse-icon {
+  0%, 100% { transform: scale(1);    }
+  50%       { transform: scale(1.18); }
+}
+.pipe-label {
+  font-size: 0.65rem;
+  color: #475569;
+  text-align: center;
+  line-height: 1.2;
+}
+.pipe-arrow {
+  font-size: 0.75rem;
+  color: #cbd5e1;
+  margin: 0 0.1rem;
+  margin-bottom: 0.9rem; /* align with icon row */
+  transition: color 0.2s;
+  align-self: flex-end;
+}
+.pipe-arrow.done { color: #22c55e; }
+
+/* ── Spinner ── */
+.deploy-status-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  color: #475569;
+}
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #cbd5e1;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Success box ── */
+.deploy-success {
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  border-radius: 10px;
+  padding: 0.6rem 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.deploy-success-header {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: #166534;
+}
+
+/* URL anatomy */
+.url-anatomy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.url-full {
+  font-size: 0.75rem;
+  word-break: break-all;
+  color: #0f172a;
+  background: #e2f5e9;
+  padding: 0.2rem 0.35rem;
+  border-radius: 5px;
+}
+.url-parts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+.url-part {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+}
+.url-value {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.68rem;
+  padding: 0.15rem 0.3rem;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.url-label {
+  font-size: 0.6rem;
+  color: #64748b;
+}
+.url-part.scheme .url-value  { background: #dbeafe; color: #1d4ed8; }
+.url-part.host   .url-value  { background: #fef9c3; color: #713f12; }
+.url-part.suffix .url-value  { background: #e0e7ff; color: #3730a3; }
+.url-part.port   .url-value  { background: #fce7f3; color: #9d174d; }
+
+.deploy-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.deploy-open {
+  background: #16a34a;
+  color: white;
+  border: none;
+  border-radius: 7px;
+  padding: 0.38rem 0.65rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: none;
   cursor: pointer;
 }
-.deploy-body button.primary:disabled {
-  background: #94a3b8;
-  cursor: default;
+.deploy-copy, .deploy-again {
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 7px;
+  padding: 0.38rem 0.65rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+  color: #374151;
 }
-.deploy-url {
-  font-size: 0.85rem;
+.deploy-copy:hover, .deploy-again:hover { background: #f9fafb; }
+.deploy-again:disabled { opacity: 0.5; cursor: default; }
+.deploy-hint {
+  font-size: 0.75rem;
+  color: #4b7c5f;
   margin: 0;
-  word-break: break-all;
 }
-.deploy-error {
-  color: #b91c1c;
-  font-size: 0.85rem;
-  margin: 0;
+
+/* ── Error box ── */
+.deploy-error-box {
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  border-radius: 10px;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.82rem;
+  color: #9f1239;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.deploy-retry {
+  background: #e11d48;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* ── Build log ── */
+.deploy-log-details {
+  font-size: 0.78rem;
+}
+.deploy-log-details summary {
+  cursor: pointer;
+  color: #64748b;
+  user-select: none;
+  padding: 0.1rem 0;
 }
 .deploy-log {
   background: #0f172a;
@@ -438,8 +663,11 @@ body.resizing {
   line-height: 1.35;
   border-radius: 8px;
   padding: 0.5rem;
-  max-height: 220px;
+  max-height: 180px;
   overflow: auto;
   white-space: pre-wrap;
-  margin: 0;
+  margin: 0.25rem 0 0;
 }
+.log-step { color: #7dd3fc; }
+.log-log  { color: #94a3b8; }
+.log-err  { color: #f87171; }

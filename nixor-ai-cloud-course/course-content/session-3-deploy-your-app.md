@@ -1,65 +1,142 @@
-# Session 3 — Deploy Your App to a Real Server
+# Session 3 — Ship It: Real Cloud Deployment
 
-**Goal:** ship your custom AI app to a live public URL on a cloud VM — the same way real engineers deploy software.
+**Goal:** push your custom AI app to a public URL on a real Azure VM — the same way
+engineers ship software at scale.
 
-## Big ideas for today
+---
 
-- **A server is just a computer that runs your code 24/7** — instead of your laptop, it's a VM in an Azure data centre.
-- **Docker containers** let you package your app and its dependencies so they run identically everywhere: your laptop, a VM, a data centre rack.
-- **Ports and URLs** are how the public reaches your running process. Port 8000 on your container → a public URL your friends can open.
-- **Logs are your eyes** into a running server. When something breaks, `docker logs` tells you what happened.
+## What you're deploying to
 
-## How it works today
+You are not deploying to a simulated environment. There is a cluster of **3 Azure VMs**
+(16 vCPU / 64 GB each) running in Microsoft's East US data centre. Every student gets a
+reserved slot: one specific VM and one specific port number, assigned at signup.
 
-Your app runs on a dedicated cluster of 5 Azure VMs managed by the course platform. Each student gets a fixed port on one of those VMs. When you click **Deploy**:
+```
+┌──────────────────────── Nixor AI Cluster (Azure East US) ──────────────────────────┐
+│                                                                                      │
+│  nixornode-1.eastus.cloudapp.azure.com     nixornode-2   nixornode-3                │
+│  ┌──────────────────────┐                  ┌──────┐      ┌──────┐                  │
+│  │ student-ali    :9000 │◄── your browser  │ ...  │      │ ...  │                  │
+│  │ student-sara   :9001 │                  │ ...  │      │ ...  │                  │
+│  │ student-hamza  :9002 │                  └──────┘      └──────┘                  │
+│  │ ...            :...  │                                                            │
+│  └──────────────────────┘                                                            │
+│         VM (16 vCPU / 64 GB)                                                        │
+└──────────────────────────────────────────────────────────────────────────────────────┘
+```
 
-1. Your workspace is zipped and sent to your assigned VM.
-2. A Docker image is built from your code on that VM.
-3. A container starts, listening on your port.
-4. A public URL appears — something like `http://nixornode-3.eastus.cloudapp.azure.com:9004`.
+Your URL will look like: `http://nixornode-2.eastus.cloudapp.azure.com:9004`
 
-That URL breaks down as: `http://` + hostname of your assigned VM + `:` + your port. That's your live app, reachable by anyone on the internet.
+Break it down:
+- **`nixornode-2`** — the DNS label we assigned to this VM in Azure
+- **`.eastus.cloudapp.azure.com`** — free Azure-managed subdomain, no domain purchase needed
+- **`:9004`** — your port, reserved only for you
 
-This is the real deployment model: **code → image → running container → public URL.**
+---
 
-## Steps
+## How the deploy pipeline works
 
-1. **Customise your app** (from Session 2). Make sure `app.py` runs locally in the terminal:
+When you click **Deploy**, here is exactly what happens — nothing is hidden:
+
+```
+Your editor → ZIP → Upload to VM → docker build → docker run -p 9004:8501 → Public URL
+```
+
+**Step 1 — Zip** 
+The platform zips everything in your `/workspace` folder (your `app.py`,
+`requirements.txt`, etc.).
+
+**Step 2 — Send to VM** 
+The ZIP is sent over HTTPS to a small agent process running on your assigned VM
+(port 8080, protected so only the platform server can reach it).
+
+**Step 3 — Docker build** 
+On the VM, Docker reads your `requirements.txt` and builds an image. You will see the
+output live in the build log — this is real `docker build` output.
+
+**Step 4 — Start container** 
+Docker starts a container from that image. The agent runs:
+```
+docker run -d --name student-<yourslug> \
+  -p 9004:8501 \
+  -e AZURE_OPENAI_ENDPOINT=... \
+  -e AZURE_OPENAI_KEY=... \
+  student-<yourslug>:latest
+```
+Your Azure keys are injected as environment variables at runtime — they are **never
+baked into the image**.
+
+**Step 5 — Public URL** 
+Port 9004 on the VM is open to the internet. Your container is listening on it.
+Anyone with your URL can reach your app.
+
+---
+
+## Steps for today
+
+1. **Customise your app** from Session 2. Confirm it works in your in-browser terminal:
    ```
-   cd /workspace
    streamlit run app.py --server.port 8501
    ```
-2. **Check `requirements.txt`** lists every package your app imports. Missing packages = failed build.
-3. **Click Deploy** in the left panel. Watch the build log — this is Docker building your image live on the server.
-4. **Open your live URL** when the deploy finishes. Share it with someone else in the room.
-5. **Read the logs** — in your terminal, run:
+
+2. **Check `requirements.txt`** lists every package your `app.py` imports.
+   Missing packages = failed Docker build. Add them now, not after deploy.
+
+3. **Click Deploy** in the Deploy panel (left column). Watch the build log stream in
+   real time. This is the same output you would see running `docker build` yourself.
+
+4. **Open your URL** when the green "Your app is live" card appears.
+   Copy the URL and paste it to the class WhatsApp group.
+
+5. **Read your logs** — ask your instructor to run on the VM:
    ```
-   # The platform instructor can show you this, or use the terminal:
-   echo "Your app is on node $NODE — ask instructor for: docker logs student-<yourslug>"
+   docker logs student-<yourslug> --tail 50
    ```
-6. **Break something on purpose**: add a syntax error to `app.py`, deploy again, watch the build fail in the log. Fix it and redeploy successfully.
-7. **Measure latency**: send 3 prompts, note the response time. Is it faster or slower than your local run? Why?
+   Get comfortable reading logs: they are your only window into a running server.
+
+6. **Break something on purpose.** Add a Python syntax error to `app.py`, hit Deploy,
+   and watch the build fail. Fix it, redeploy, succeed. This is a core skill.
+
+7. **Measure latency.** Send 3 prompts. Is the response time faster or slower than your
+   local run in Session 1? Why? (Hint: think about where the Azure OpenAI endpoint is.)
+
+---
 
 ## Starter track
-- Deploy successfully and open your live URL.
-- Fix one issue you find after deploying.
+- Deploy successfully and share your live URL.
 
 ## Stretch track
-- Look at the `student.Dockerfile` that gets injected into your build (ask instructor). Can you write a better one?
-- What happens if two students have a naming conflict? How would you prevent it in a real system?
-- Document one reliability risk and one cost risk of this architecture.
+- Open the `student.Dockerfile` (ask instructor to show you). Could you write a leaner
+  version? What layers would you combine?
+- What happens if you deploy twice? Does the old container keep running?
+  Run `docker ps` on your VM (ask instructor) and check.
+- What is the difference between the *image* and the *container*? Write one sentence for
+  each in your own words.
+- Document one reliability risk and one cost risk of running 50 student apps on 3 shared VMs.
+
+---
 
 ## Concepts you just used
 
 | Concept | Where you saw it |
 |---|---|
-| Virtual Machine | The Azure VM your app is running on |
-| Docker image | Built from your code during deploy |
-| Docker container | The running process; has its own filesystem and network |
-| Port | 8000 inside the container → your public port on the VM |
-| Public IP | The VM's address; your URL uses it |
-| Build log | Streaming output of `docker build` |
-| Environment variable | AZURE_OPENAI_* injected at container start, not baked into the image |
+| Virtual Machine | The Azure VM your container is running on |
+| Docker image | Built from your code during deploy; immutable snapshot |
+| Docker container | The running instance of your image; has its own process and filesystem |
+| Port mapping | `-p 9004:8501` maps your public port → Streamlit's internal port |
+| DNS label | `nixornode-2.eastus.cloudapp.azure.com` — how the internet finds your VM |
+| Environment variable | Your Azure keys injected at `docker run`, not stored in the image |
+| Build log | Live output of `docker build`; your first debugging tool |
+| Deploy agent | The small HTTP server on each VM that receives builds and manages containers |
 
-## You learned
-Production deployment isn't magic — it's your code in a container on a computer in a data centre, with a port number the internet can reach.
+---
+
+## The real takeaway
+
+Production deployment is not magic. It is:
+
+> **Your code** → **packaged as a container image** → **running on a computer in a data
+> centre** → **a port the internet can reach**.
+
+Every deployment platform (Azure App Service, AWS ECS, Google Cloud Run, Heroku) is just
+a managed version of exactly what you did today.
