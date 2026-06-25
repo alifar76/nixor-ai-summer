@@ -119,13 +119,25 @@ class Settings(BaseSettings):
     terminal_require_non_root: bool = True
     local_sandbox_uid: int = 1000
     local_sandbox_gid: int = 1000
+    # Distinct per-student sandbox identity. Each student's terminal runs as its own
+    # unprivileged uid/gid = base + (user_id % span), so the RLIMIT_NPROC process budget,
+    # file ownership, and signal/ptrace permissions are isolated *between students* — not
+    # just between students and the host. One student's fork bomb can no longer consume
+    # another student's process budget, and no student can see/kill/read another's
+    # processes or files. The range sits well above system uids and below uid_t limits.
+    # Set local_sandbox_per_student=False to revert to the single shared uid above.
+    local_sandbox_per_student: bool = True
+    local_sandbox_uid_base: int = 100000
+    local_sandbox_gid_base: int = 100000
+    local_sandbox_id_span: int = 60000
     # Per-terminal OS resource caps (defense-in-depth against fork/disk bombs). These are
     # applied as rlimits in the forked child *before* it drops to the sandbox user, so even
     # a command that slips past the syntactic guard cannot exhaust the host. RLIMIT_NPROC is
     # the hard stop for fork bombs like `:(){ :|:& };:` — once the sandbox uid hits this many
-    # processes, fork() fails with EAGAIN instead of taking the box down. Note: all student
-    # terminals share local_sandbox_uid, so this is a per-uid budget; keep it generous enough
-    # for normal use (streamlit + pip) but far below the host's pid_max.
+    # processes, fork() fails with EAGAIN instead of taking the box down. With per-student
+    # uids (local_sandbox_per_student) this budget is enforced per student, so one student's
+    # fork bomb can't starve another's. Keep it generous enough for normal use (streamlit +
+    # pip) but far below the host's pid_max.
     terminal_max_processes: int = 256      # RLIMIT_NPROC
     terminal_max_open_files: int = 2048    # RLIMIT_NOFILE
     terminal_max_file_mb: int = 512        # RLIMIT_FSIZE — caps single-file size (disk-fill)

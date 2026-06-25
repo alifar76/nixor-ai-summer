@@ -258,11 +258,29 @@ class LocalWorkspaceManager(WorkspaceManager):
                 except OSError:
                     logger.debug("chown failed for %s", path, exc_info=True)
 
-    def _sandbox_credentials(self) -> tuple[int, int] | None:
+    @staticmethod
+    def _derive_ids(user_id: int) -> tuple[int, int]:
+        """Map a student's user_id to a stable, unprivileged (uid, gid).
+
+        With per-student identity enabled, uid = base + (user_id % span), so every student
+        gets their own kernel identity (process budget, file ownership, signal scope). The
+        modulo keeps ids inside the reserved range; collisions only occur past `span`
+        students, far beyond a single cohort."""
+        if settings.local_sandbox_per_student:
+            span = settings.local_sandbox_id_span
+            if span <= 0:
+                raise RuntimeError("Invalid local_sandbox_id_span; must be > 0.")
+            offset = user_id % span
+            return (
+                settings.local_sandbox_uid_base + offset,
+                settings.local_sandbox_gid_base + offset,
+            )
+        return settings.local_sandbox_uid, settings.local_sandbox_gid
+
+    def _sandbox_credentials(self, user_id: int) -> tuple[int, int] | None:
         if not settings.terminal_require_non_root or os.geteuid() != 0:
             return None
-        uid = settings.local_sandbox_uid
-        gid = settings.local_sandbox_gid
+        uid, gid = self._derive_ids(user_id)
         if uid <= 0 or gid <= 0:
             raise RuntimeError("Invalid sandbox UID/GID. Must be non-zero values.")
         return uid, gid
@@ -336,10 +354,16 @@ class LocalWorkspaceManager(WorkspaceManager):
         with self._lock:
             ws_dir.mkdir(parents=True, exist_ok=True)
             self._seed_workspace(ws_dir)
-            creds = self._sandbox_credentials()
+            creds = self._sandbox_credentials(user_id)
             if creds is not None:
                 uid, gid = creds
                 self._set_tree_owner(ws_dir, uid, gid)
+                # Lock the workspace to its owner so other students' uids cannot read or
+                # traverse it (defense in depth alongside the per-session jail).
+                try:
+                    os.chmod(ws_dir, 0o700)
+                except OSError:
+                    logger.debug("could not chmod workspace %s", ws_dir, exc_info=True)
             self._stopped.discard(user_id)
         return WorkspaceInfo(
             user_id=user_id,
@@ -375,7 +399,7 @@ class LocalWorkspaceManager(WorkspaceManager):
         can_jail = mode in {"preferred", "required"} and os.geteuid() == 0
         if can_jail:
             try:
-                return self._spawn(cwd, cols, rows, jailed=True)
+                return self._spawn(cwd, cols, rows, jailed=True, user_id=user_id)
             except Exception as exc:
                 logger.warning("Could not start isolated (jailed) terminal for user %s: %s", user_id, exc)
                 if mode == "required":
@@ -383,16 +407,17 @@ class LocalWorkspaceManager(WorkspaceManager):
                         "Isolated sandbox is unavailable on this host (TERMINAL_ISOLATION=required)."
                     ) from exc
                 logger.warning("Falling back to unjailed terminal for user %s.", user_id)
-        return self._spawn(cwd, cols, rows, jailed=False)
+        return self._spawn(cwd, cols, rows, jailed=False, user_id=user_id)
 
-    def _spawn(self, cwd: pathlib.Path, cols: int, rows: int, *, jailed: bool) -> TerminalSession:
-        creds = self._sandbox_credentials()
+    def _spawn(self, cwd: pathlib.Path, cols: int, rows: int, *, jailed: bool, user_id: int) -> TerminalSession:
+        creds = self._sandbox_credentials(user_id)
         # A jailed shell must never run as root inside the chroot (root could escape it),
-        # so force a drop to the sandbox user even if terminal_require_non_root is off.
+        # so force a drop to the per-student sandbox user even if terminal_require_non_root
+        # is off.
         if jailed and creds is None:
             if os.geteuid() != 0:
                 raise RuntimeError("Jailing requires the API process to run as root.")
-            uid, gid = settings.local_sandbox_uid, settings.local_sandbox_gid
+            uid, gid = self._derive_ids(user_id)
             if uid <= 0 or gid <= 0:
                 raise RuntimeError("Invalid sandbox UID/GID for jailed terminal.")
             creds = (uid, gid)
@@ -454,6 +479,13 @@ class LocalWorkspaceManager(WorkspaceManager):
             _apply_rlimits()
             if creds is not None:
                 uid, gid = creds
+                # Drop root's supplementary groups before switching identity, so the student
+                # process is left with only its own gid and can't reach files via an
+                # inherited group membership.
+                try:
+                    os.setgroups([gid])
+                except OSError:
+                    logger.debug("setgroups failed", exc_info=True)
                 os.setgid(gid)
                 os.setuid(uid)
 
