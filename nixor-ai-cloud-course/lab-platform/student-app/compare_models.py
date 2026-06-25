@@ -27,8 +27,8 @@ MODELS = [
         "id": "gpt-5.3",
         "label": "GPT-5.3",
         "deployment": os.environ.get("MODEL_GPT53_DEPLOYMENT", "oai-gpt53"),
-        "endpoint": os.environ.get("AZURE_OPENAI_ENDPOINT", ""),
-        "api_key": os.environ.get("AZURE_OPENAI_API_KEY", ""),
+        "endpoint": os.environ.get("AZURE_FOUNDRY_ENDPOINT", "") or os.environ.get("AZURE_OPENAI_ENDPOINT", ""),
+        "api_key": os.environ.get("AZURE_FOUNDRY_API_KEY", "") or os.environ.get("AZURE_OPENAI_API_KEY", ""),
     },
     {
         "id": "grok-4.3",
