@@ -72,6 +72,15 @@ async def deploy(
     azure_openai_api_key: str = Header(default="", alias="x-aoai-key"),
     azure_openai_deployment: str = Header(default="", alias="x-aoai-deployment"),
     azure_openai_api_version: str = Header(default="2024-10-21", alias="x-aoai-version"),
+    azure_foundry_endpoint: str = Header(default="", alias="x-foundry-endpoint"),
+    azure_foundry_api_key: str = Header(default="", alias="x-foundry-key"),
+    model_gpt55_deployment: str = Header(default="", alias="x-model-gpt55-deployment"),
+    model_grok43_deployment: str = Header(default="", alias="x-model-grok43-deployment"),
+    model_deepseek_v4_pro_deployment: str = Header(default="", alias="x-model-deepseek-v4-pro-deployment"),
+    model_mistral_medium_35_deployment: str = Header(default="", alias="x-model-mistral-medium-35-deployment"),
+    model_flux2_pro_deployment: str = Header(default="", alias="x-model-flux2-pro-deployment"),
+    model_sora2_deployment: str = Header(default="", alias="x-model-sora2-deployment"),
+    model_catalog_json: str = Header(default="", alias="x-model-catalog-json"),
 ):
     """Deploy a student's app.
 
@@ -115,6 +124,15 @@ async def deploy(
         ("AZURE_OPENAI_API_KEY", azure_openai_api_key),
         ("AZURE_OPENAI_DEPLOYMENT", azure_openai_deployment),
         ("AZURE_OPENAI_API_VERSION", azure_openai_api_version),
+        ("AZURE_FOUNDRY_ENDPOINT", azure_foundry_endpoint),
+        ("AZURE_FOUNDRY_API_KEY", azure_foundry_api_key),
+        ("MODEL_GPT55_DEPLOYMENT", model_gpt55_deployment),
+        ("MODEL_GROK43_DEPLOYMENT", model_grok43_deployment),
+        ("MODEL_DEEPSEEK_V4_PRO_DEPLOYMENT", model_deepseek_v4_pro_deployment),
+        ("MODEL_MISTRAL_MEDIUM_35_DEPLOYMENT", model_mistral_medium_35_deployment),
+        ("MODEL_FLUX2_PRO_DEPLOYMENT", model_flux2_pro_deployment),
+        ("MODEL_SORA2_DEPLOYMENT", model_sora2_deployment),
+        ("AI_MODEL_CATALOG_JSON", model_catalog_json),
     ]
 
     async def stream():

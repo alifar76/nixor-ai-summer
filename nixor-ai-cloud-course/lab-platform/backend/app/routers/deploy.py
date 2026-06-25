@@ -152,6 +152,8 @@ async def _deploy_cluster(
     api_key = sandbox.azure_openai_api_key or settings.azure_openai_api_key
     deployment = sandbox.azure_openai_deployment or settings.azure_openai_deployment
     api_version = settings.azure_openai_api_version
+    foundry_endpoint = settings.azure_foundry_endpoint
+    foundry_api_key = settings.azure_foundry_api_key
 
     yield _sse({"step": f"Sending to cluster node {sandbox.cluster_node_index + 1}..."})
 
@@ -170,6 +172,15 @@ async def _deploy_cluster(
                     "x-aoai-key": api_key,
                     "x-aoai-deployment": deployment,
                     "x-aoai-version": api_version,
+                    "x-foundry-endpoint": foundry_endpoint,
+                    "x-foundry-key": foundry_api_key,
+                    "x-model-gpt55-deployment": settings.model_gpt55_deployment,
+                    "x-model-grok43-deployment": settings.model_grok43_deployment,
+                    "x-model-deepseek-v4-pro-deployment": settings.model_deepseek_v4_pro_deployment,
+                    "x-model-mistral-medium-35-deployment": settings.model_mistral_medium_35_deployment,
+                    "x-model-flux2-pro-deployment": settings.model_flux2_pro_deployment,
+                    "x-model-sora2-deployment": settings.model_sora2_deployment,
+                    "x-model-catalog-json": settings.ai_model_catalog_json,
                 },
                 files={"file": (f"{slug}.zip", zip_bytes, "application/zip")},
             ) as resp:
@@ -300,6 +311,15 @@ async def _deploy_legacy(sandbox: StudentSandbox, workspace_dir: str, user: User
             f"AZURE_OPENAI_API_KEY={api_key}",
             f"AZURE_OPENAI_DEPLOYMENT={deployment}",
             f"AZURE_OPENAI_API_VERSION={api_version}",
+            f"AZURE_FOUNDRY_ENDPOINT={settings.azure_foundry_endpoint}",
+            f"AZURE_FOUNDRY_API_KEY={settings.azure_foundry_api_key}",
+            f"MODEL_GPT55_DEPLOYMENT={settings.model_gpt55_deployment}",
+            f"MODEL_GROK43_DEPLOYMENT={settings.model_grok43_deployment}",
+            f"MODEL_DEEPSEEK_V4_PRO_DEPLOYMENT={settings.model_deepseek_v4_pro_deployment}",
+            f"MODEL_MISTRAL_MEDIUM_35_DEPLOYMENT={settings.model_mistral_medium_35_deployment}",
+            f"MODEL_FLUX2_PRO_DEPLOYMENT={settings.model_flux2_pro_deployment}",
+            f"MODEL_SORA2_DEPLOYMENT={settings.model_sora2_deployment}",
+            f"AI_MODEL_CATALOG_JSON={settings.ai_model_catalog_json}",
             "WEBSITES_PORT=8000",
         ]),
     ]
