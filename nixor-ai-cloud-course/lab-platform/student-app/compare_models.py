@@ -26,13 +26,11 @@ MODELS = [
     {
         "id": "gpt-5.5",
         "label": "GPT-5.5",
-        "deployment": (
-            os.environ.get("MODEL_GPT55_DEPLOYMENT", "")
-            or os.environ.get("MODEL_GPT53_DEPLOYMENT", "")
-            or "gpt-5-5"
-        ),
-        "endpoint": os.environ.get("AZURE_FOUNDRY_ENDPOINT", "") or os.environ.get("AZURE_OPENAI_ENDPOINT", ""),
-        "api_key": os.environ.get("AZURE_FOUNDRY_API_KEY", "") or os.environ.get("AZURE_OPENAI_API_KEY", ""),
+        # gpt-5.5 lives on the Azure OpenAI resource (not Foundry), so it uses the
+        # AZURE_OPENAI_* endpoint/key together with its deployment name.
+        "deployment": os.environ.get("MODEL_GPT55_DEPLOYMENT", "gpt-5-5"),
+        "endpoint": os.environ.get("AZURE_OPENAI_ENDPOINT", ""),
+        "api_key": os.environ.get("AZURE_OPENAI_API_KEY", ""),
     },
     {
         "id": "grok-4.3",
@@ -87,7 +85,7 @@ def ask(model: dict, prompt: str) -> tuple[str, float]:
 
 def main():
     print(divider("═"))
-    print("  MODEL COMPARISON — 4 Azure AI Foundry Models")
+    print("  MODEL COMPARISON — 4 Azure AI models")
     print(divider("═"))
     print(f"\nPrompt: {PROMPT}\n")
 

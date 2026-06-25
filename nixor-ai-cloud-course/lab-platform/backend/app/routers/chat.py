@@ -36,13 +36,14 @@ _MAX_RETRIES_ON_429 = 2
 
 
 def _chat_endpoint() -> str:
-    """Prefer the Foundry endpoint (all 4 catalog models live there); fall back to the
-    classic Azure OpenAI endpoint so existing deployments keep working."""
-    return (settings.azure_foundry_endpoint or settings.azure_openai_endpoint).rstrip("/")
+    """The in-app tutor runs on GPT-5.5, which lives on the Azure OpenAI resource — so use
+    the AZURE_OPENAI_* endpoint first. Fall back to the Foundry endpoint only if the OpenAI
+    one isn't configured (the endpoint and its key/deployment must be a matched pair)."""
+    return (settings.azure_openai_endpoint or settings.azure_foundry_endpoint).rstrip("/")
 
 
 def _chat_api_key() -> str:
-    return settings.azure_foundry_api_key or settings.azure_openai_api_key
+    return settings.azure_openai_api_key or settings.azure_foundry_api_key
 
 
 def _chat_url(deployment: str) -> str:
@@ -101,7 +102,8 @@ async def chat(body: ChatRequest, user: User = Depends(get_current_user)):
     payload = {
         "messages": messages,
         "stream": True,
-        "max_completion_tokens": 350,
+        # Generous cap so tutor answers (explanations + code) aren't cut off mid-response.
+        "max_completion_tokens": 1024,
     }
     headers = {"api-key": _chat_api_key(), "Content-Type": "application/json"}
 

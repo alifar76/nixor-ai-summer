@@ -58,10 +58,9 @@ class Settings(BaseSettings):
     # students in terminal/workspace and deploy targets.
     azure_foundry_endpoint: str = ""
     azure_foundry_api_key: str = ""
-    # Deployment names for the 4 approved deployable models.
-    # MODEL_GPT53_DEPLOYMENT is kept for backward compatibility with older student apps.
+    # Deployment names for the 4 approved deployable models. GPT-5.5 lives on the Azure
+    # OpenAI resource (AZURE_OPENAI_*); the other three live on the Foundry resource.
     model_gpt55_deployment: str = "gpt-5-5"
-    model_gpt53_deployment: str = ""
     model_grok43_deployment: str = "xai-grok43"
     model_deepseek_v4_pro_deployment: str = "ds-v4pro"
     model_mistral_medium_35_deployment: str = "mstr-med35"
@@ -189,7 +188,6 @@ class Settings(BaseSettings):
         """Primary OpenAI-family deployment used in starter apps/catalog."""
         return (
             self.model_gpt55_deployment
-            or self.model_gpt53_deployment
             or self.azure_openai_deployment
             or "gpt-5-5"
         )

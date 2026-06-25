@@ -162,7 +162,6 @@ def deploy_cmd(
         f"AZURE_FOUNDRY_ENDPOINT={settings.azure_foundry_endpoint} "
         f"AZURE_FOUNDRY_API_KEY={settings.azure_foundry_api_key} "
         f"MODEL_GPT55_DEPLOYMENT={settings.primary_text_model_deployment} "
-        f"MODEL_GPT53_DEPLOYMENT={settings.primary_text_model_deployment} "
         f"MODEL_GROK43_DEPLOYMENT={settings.model_grok43_deployment} "
         f"MODEL_DEEPSEEK_V4_PRO_DEPLOYMENT={settings.model_deepseek_v4_pro_deployment} "
         f"MODEL_MISTRAL_MEDIUM_35_DEPLOYMENT={settings.model_mistral_medium_35_deployment} "

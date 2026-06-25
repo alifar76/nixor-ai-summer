@@ -35,6 +35,12 @@ _IGNORE_DIRS = {".git", "__pycache__", "node_modules", ".cache", ".venv", "venv"
 _HIDDEN_NAMES = frozenset({".nixor_creds", ".nixor_site"})
 _MAX_FILE_BYTES = 1_000_000
 
+# Platform-managed utility scripts: course-provided tools students run but don't author.
+# These are re-copied from the template on every ensure_workspace so platform fixes (e.g.
+# correct model params/endpoints) reach existing workspaces even though the files already
+# exist. The student-authored app.py is NOT in this set — it's upgraded in place instead.
+_MANAGED_TEMPLATE_FILES = ("compare_models.py", "list_deployments.py")
+
 # --- Mount-namespace jail primitives -------------------------------------------------- #
 # We confine each interactive shell to a chroot built from read-only bind mounts of the
 # host's system directories plus a writable bind of the student's own workspace. This runs
@@ -351,51 +357,72 @@ class LocalWorkspaceManager(WorkspaceManager):
                 shutil.copytree(item, dst)
             else:
                 shutil.copy2(item, dst)
+        # Platform-managed utility scripts are refreshed from the template even when they
+        # already exist, so fixes (correct model params/endpoints) reach existing students.
+        # These are course tools, not the student's own work — the student-authored app.py
+        # is upgraded in place below instead of being overwritten.
+        for name in _MANAGED_TEMPLATE_FILES:
+            src = template / name
+            if src.is_file():
+                try:
+                    shutil.copy2(src, target / name)
+                except OSError:
+                    logger.debug("Could not refresh managed file %s", name, exc_info=True)
         self._refresh_legacy_workspace_files(target)
 
     @staticmethod
     def _refresh_legacy_workspace_files(target: pathlib.Path) -> None:
-        """Apply safe in-place upgrades to old starter files in existing workspaces.
+        """Upgrade an existing (student-authored) app.py in place to the current form.
 
-        This keeps prior student workspaces usable after platform upgrades without
-        deleting the whole directory. Updates are narrowly scoped and only touch known
-        starter defaults from older templates.
+        Keeps prior student workspaces working after platform changes without deleting
+        their directory. Each rewrite targets a known older starter snippet and rewrites it
+        to the current single-source form: GPT-5.5 on the Azure OpenAI resource, no `or`
+        fallback chains, and `max_completion_tokens` (GPT-5.5 rejects `max_tokens`). If a
+        student edited those exact lines the snippet won't match and is left untouched.
+        Platform-managed utility scripts (compare_models.py, list_deployments.py) are not
+        listed here — they are re-copied wholesale by _seed_workspace.
         """
+        clean_deployment = 'DEPLOYMENT = os.environ.get("MODEL_GPT55_DEPLOYMENT", "gpt-5-5")'
         rewrites = {
             "app.py": (
+                # Docstrings from older (gpt-5.3) templates.
                 ("gpt-5.3 via deployment `oai-gpt53` by default", "gpt-5.5 via deployment `gpt-5-5` by default"),
-                ("api_version=os.environ.get(\"AZURE_OPENAI_API_VERSION\", \"2024-10-21\"),",
-                 "api_version=(\n"
+                # Foundry-first endpoint block -> Azure OpenAI only (where GPT-5.5 lives).
+                ("# Prefer the Foundry endpoint when set (all 4 catalog models live there).\n"
+                 "# Fall back to the classic Azure OpenAI endpoint for compatibility.\n"
+                 "_endpoint = (\n"
+                 "    os.environ.get(\"AZURE_FOUNDRY_ENDPOINT\", \"\")\n"
+                 "    or os.environ.get(\"AZURE_OPENAI_ENDPOINT\", \"\")\n"
+                 ")\n"
+                 "_api_key = (\n"
+                 "    os.environ.get(\"AZURE_FOUNDRY_API_KEY\", \"\")\n"
+                 "    or os.environ.get(\"AZURE_OPENAI_API_KEY\", \"\")\n"
+                 ")",
+                 "# gpt-5.5 lives on your Azure OpenAI resource, so the app uses the AZURE_OPENAI_*\n"
+                 "# values as a matched set — endpoint, key, and deployment all from the same resource.\n"
+                 "_endpoint = os.environ.get(\"AZURE_OPENAI_ENDPOINT\", \"\")\n"
+                 "_api_key = os.environ.get(\"AZURE_OPENAI_API_KEY\", \"\")"),
+                # api_version or-chain -> single source.
+                ("api_version=(\n"
                  "        os.environ.get(\"AZURE_OPENAI_API_VERSION\", \"\")\n"
                  "        or os.environ.get(\"AZURE_FOUNDRY_API_VERSION\", \"\")\n"
                  "        or \"2024-10-21\"\n"
-                 "    ),"),
-                ("DEPLOYMENT = os.environ.get(\"AZURE_OPENAI_DEPLOYMENT\", \"oai-gpt53\")",
-                 "DEPLOYMENT = (\n"
+                 "    ),",
+                 "api_version=os.environ.get(\"AZURE_OPENAI_API_VERSION\", \"2024-10-21\"),"),
+                # DEPLOYMENT or-chain -> single source.
+                ("DEPLOYMENT = (\n"
                  "    os.environ.get(\"MODEL_GPT55_DEPLOYMENT\", \"\")\n"
                  "    or os.environ.get(\"MODEL_GPT53_DEPLOYMENT\", \"\")\n"
                  "    or os.environ.get(\"AZURE_OPENAI_DEPLOYMENT\", \"\")\n"
                  "    or \"gpt-5-5\"\n"
-                 ")"),
-                ("DEPLOYMENT = os.environ.get(\"AZURE_OPENAI_DEPLOYMENT\", \"gpt-5-5\")",
-                 "DEPLOYMENT = (\n"
-                 "    os.environ.get(\"MODEL_GPT55_DEPLOYMENT\", \"\")\n"
-                 "    or os.environ.get(\"MODEL_GPT53_DEPLOYMENT\", \"\")\n"
-                 "    or os.environ.get(\"AZURE_OPENAI_DEPLOYMENT\", \"\")\n"
-                 "    or \"gpt-5-5\"\n"
-                 ")"),
+                 ")",
+                 clean_deployment),
+                # Pre-codex single-line DEPLOYMENT forms.
+                ('DEPLOYMENT = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "oai-gpt53")', clean_deployment),
+                ('DEPLOYMENT = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-5-5")', clean_deployment),
+                # GPT-5.5 parameter requirements.
                 ("temperature=0.7,", "temperature=1,"),
                 ("max_tokens=600,", "max_completion_tokens=600,"),
-            ),
-            "compare_models.py": (
-                ("\"id\": \"gpt-5.3\",", "\"id\": \"gpt-5.5\","),
-                ("\"label\": \"GPT-5.3\",", "\"label\": \"GPT-5.5\","),
-                ("\"deployment\": os.environ.get(\"MODEL_GPT53_DEPLOYMENT\", \"oai-gpt53\"),",
-                 "\"deployment\": (\n"
-                 "            os.environ.get(\"MODEL_GPT55_DEPLOYMENT\", \"\")\n"
-                 "            or os.environ.get(\"MODEL_GPT53_DEPLOYMENT\", \"\")\n"
-                 "            or \"gpt-5-5\"\n"
-                 "        ),"),
             ),
         }
         for rel, replacements in rewrites.items():
@@ -544,7 +571,6 @@ class LocalWorkspaceManager(WorkspaceManager):
             "AZURE_OPENAI_API_VERSION",
             "AZURE_FOUNDRY_ENDPOINT",
             "MODEL_GPT55_DEPLOYMENT",
-            "MODEL_GPT53_DEPLOYMENT",
             "MODEL_GROK43_DEPLOYMENT",
             "MODEL_DEEPSEEK_V4_PRO_DEPLOYMENT",
             "MODEL_MISTRAL_MEDIUM_35_DEPLOYMENT",
