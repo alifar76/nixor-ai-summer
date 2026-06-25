@@ -373,11 +373,34 @@ body.resizing {
   gap: 0.3rem;
 }
 
+.ai-model-section {
+  margin-top: 0.5rem;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 0.4rem;
+}
+
+.ai-model-section-label {
+  font-size: 0.72rem;
+  color: #64748b;
+  margin: 0 0 0.35rem;
+  line-height: 1.4;
+}
+
+.ai-model-section-label code {
+  background: #f1f5f9;
+  border-radius: 3px;
+  padding: 0 3px;
+  font-size: 0.68rem;
+}
+
 .ai-model-grid {
-  margin-top: 0.45rem;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.3rem;
+}
+
+.ai-model-provider {
+  text-transform: capitalize;
 }
 
 .ai-model-card {

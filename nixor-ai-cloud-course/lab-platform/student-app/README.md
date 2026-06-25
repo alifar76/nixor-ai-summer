@@ -1,31 +1,43 @@
 # Your AI App
 
-This is the app you'll build and deploy during the course.
+This is the app you'll build and customize during the course.
 
-## Run it locally / in Codespaces
+## Run it locally / in the platform terminal
+
+Your sandbox already has all environment variables set. Inside the platform terminal:
+
 ```bash
-cp .env.example .env     # then fill in your sandbox values
 pip install -r requirements.txt
-streamlit run app.py
+streamlit run app.py --server.port 8501
 ```
 
-## Deploy it to your Azure sandbox (Session 3)
-Your sandbox already has a Web App waiting. From this folder:
-```bash
-az webapp up --name <your-web-app-name> --resource-group rg-nixor-<your-team>
-```
-Then set your secrets as App Settings (so they're never in your code):
-```bash
-az webapp config appsettings set \
-  --name <your-web-app-name> --resource-group rg-nixor-<your-team> \
-  --settings AZURE_OPENAI_ENDPOINT=... AZURE_OPENAI_API_KEY=... \
-             AZURE_OPENAI_DEPLOYMENT=oai-gpt55 WEBSITES_PORT=8000
-```
+## Deploy to the VM Cluster (Session 3)
 
-The course website walks you through all of this — you won't have to memorise it.
+There are no Azure Web Apps or GitHub Actions to configure. Deployment is one click:
+
+1. Open the **Deploy** tab in the platform UI.
+2. Click **Deploy App** — your code is zipped and sent to your assigned VM node.
+3. Docker builds an image from your `app.py`, then starts a container on your
+   reserved port.
+4. A public URL appears: `http://nixornode-N.eastus.cloudapp.azure.com:PORT/`
+
+That's it. Every push of **Deploy App** rebuilds from your latest saved code.
+
+> **Why this matters:** This is real cloud deployment — your code runs in a Docker
+> container on a Linux server in Microsoft Azure's East US data centre. The same
+> pattern (containerise → push → run) is used by every major tech company.
 
 ## Multi-model playground
-The platform injects a 4-model Azure Foundry catalog into your environment:
-`gpt-5.5`, `grok-4.3`, `DeepSeek-V4-Pro`, `mistral-medium-3-5`.
-Use `AZURE_FOUNDRY_ENDPOINT`, `AZURE_FOUNDRY_API_KEY`, and the `MODEL_*_DEPLOYMENT`
-variables from `.env` to build your own text experiments.
+
+The platform injects a 4-model Azure AI Foundry catalog into your environment.
+Each model has its own deployment and env var:
+
+| Model               | Env var                         | Deployment      |
+|---------------------|---------------------------------|-----------------|
+| GPT-5.5             | `MODEL_GPT55_DEPLOYMENT`        | `oai-gpt55`     |
+| Grok-4.3            | `MODEL_GROK43_DEPLOYMENT`       | `xai-grok43`    |
+| DeepSeek-V4-Pro     | `MODEL_DEEPSEEK_V4_PRO_DEPLOYMENT` | `ds-v4pro`   |
+| mistral-medium-3-5  | `MODEL_MISTRAL_MEDIUM_35_DEPLOYMENT` | `mstr-med35` |
+
+Use `AZURE_FOUNDRY_ENDPOINT` and `AZURE_FOUNDRY_API_KEY` from your environment to
+call these. See `compare_models.py` for a working example.

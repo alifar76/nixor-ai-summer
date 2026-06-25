@@ -78,15 +78,20 @@ export function ChatPanel({ onSend, models = [], selectedModelId = "", onSelectM
         <button disabled={loading} type="submit">Send</button>
       </form>
       {models.length > 0 && (
-        <div className="ai-model-grid">
-          {models.map((m) => (
-            <div key={m.id} className="ai-model-card">
-              <strong>{m.label}</strong>
-              <span>{m.provider}</span>
-              <small>in: {(m.input || []).join(", ") || "-"}</small>
-              <small>out: {(m.output || []).join(", ") || "-"}</small>
-            </div>
-          ))}
+        <div className="ai-model-section">
+          <p className="ai-model-section-label">
+            4 models available in your sandbox — use these in your app via the <code>MODEL_*_DEPLOYMENT</code> env vars:
+          </p>
+          <div className="ai-model-grid">
+            {models.map((m) => (
+              <div key={m.id} className="ai-model-card">
+                <strong>{m.label}</strong>
+                <span className="ai-model-provider">{m.provider}</span>
+                <small>in: {(m.input || []).join(", ") || "-"}</small>
+                <small>out: {(m.output || []).join(", ") || "-"}</small>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </section>
