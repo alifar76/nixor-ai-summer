@@ -6,6 +6,7 @@ The model's API key never reaches the browser — the backend holds it and proxi
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 
@@ -28,6 +29,10 @@ SYSTEM_PROMPT = (
     "just dump a full solution — nudge them toward understanding. When they share code "
     "or an error, point at the specific line and explain the fix. Keep answers concise."
 )
+_MAX_HISTORY_MESSAGES = 8
+_MAX_MESSAGE_CHARS = 2000
+_MAX_CONTEXT_CHARS = 2000
+_MAX_RETRIES_ON_429 = 2
 
 
 def _chat_url(deployment: str) -> str:
@@ -71,42 +76,63 @@ async def chat(body: ChatRequest, user: User = Depends(get_current_user)):
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     if body.context.strip():
         messages.append(
-            {"role": "system", "content": f"The student is currently looking at:\n{body.context[:4000]}"}
+            {"role": "system", "content": f"The student is currently looking at:\n{body.context[:_MAX_CONTEXT_CHARS]}"}
         )
-    messages += [{"role": m.role, "content": m.content} for m in body.messages]
+    for m in body.messages[-_MAX_HISTORY_MESSAGES:]:
+        content = (m.content or "").strip()
+        if not content:
+            continue
+        messages.append({"role": m.role, "content": content[:_MAX_MESSAGE_CHARS]})
 
     payload = {
         "messages": messages,
         "stream": True,
-        "max_completion_tokens": 800,
+        "max_completion_tokens": 350,
     }
     headers = {"api-key": settings.azure_openai_api_key, "Content-Type": "application/json"}
 
     async def event_stream():
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0)) as client:
-                async with client.stream("POST", _chat_url(deployment), json=payload, headers=headers) as resp:
-                    if resp.status_code >= 400:
-                        detail = (await resp.aread()).decode("utf-8", "replace")[:500]
-                        logger.warning("Azure chat error %s: %s", resp.status_code, detail)
-                        yield _sse({"error": f"AI error ({resp.status_code})"})
+                for attempt in range(_MAX_RETRIES_ON_429 + 1):
+                    async with client.stream("POST", _chat_url(deployment), json=payload, headers=headers) as resp:
+                        if resp.status_code == 429:
+                            detail = (await resp.aread()).decode("utf-8", "replace")[:500]
+                            logger.warning("Azure chat rate-limited (attempt %s): %s", attempt + 1, detail)
+                            if attempt >= _MAX_RETRIES_ON_429:
+                                yield _sse(
+                                    {"error": "AI is busy right now (rate limit). Wait ~10 seconds and try again."}
+                                )
+                                return
+                            retry_after = resp.headers.get("retry-after", "").strip()
+                            try:
+                                wait_s = float(retry_after)
+                            except ValueError:
+                                wait_s = 1.5 * (attempt + 1)
+                            await asyncio.sleep(max(0.5, min(wait_s, 8.0)))
+                            continue
+                        if resp.status_code >= 400:
+                            detail = (await resp.aread()).decode("utf-8", "replace")[:500]
+                            logger.warning("Azure chat error %s: %s", resp.status_code, detail)
+                            yield _sse({"error": f"AI error ({resp.status_code})"})
+                            return
+                        async for line in resp.aiter_lines():
+                            if not line or not line.startswith("data:"):
+                                continue
+                            data = line[len("data:"):].strip()
+                            if data == "[DONE]":
+                                break
+                            try:
+                                chunk = json.loads(data)
+                            except json.JSONDecodeError:
+                                continue
+                            choices = chunk.get("choices") or []
+                            if not choices:
+                                continue
+                            delta = choices[0].get("delta", {}).get("content")
+                            if delta:
+                                yield _sse({"delta": delta})
                         return
-                    async for line in resp.aiter_lines():
-                        if not line or not line.startswith("data:"):
-                            continue
-                        data = line[len("data:"):].strip()
-                        if data == "[DONE]":
-                            break
-                        try:
-                            chunk = json.loads(data)
-                        except json.JSONDecodeError:
-                            continue
-                        choices = chunk.get("choices") or []
-                        if not choices:
-                            continue
-                        delta = choices[0].get("delta", {}).get("content")
-                        if delta:
-                            yield _sse({"delta": delta})
         except httpx.HTTPError as exc:
             logger.warning("Chat upstream failed: %s", exc)
             yield _sse({"error": "Could not reach the AI service."})
