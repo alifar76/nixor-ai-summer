@@ -73,8 +73,8 @@ def ask(model: dict, prompt: str) -> tuple[str, float]:
     response = client.chat.completions.create(
         model=model["deployment"],
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.7,
-        max_tokens=300,
+        temperature=1,
+        max_completion_tokens=300,
     )
     elapsed = time.monotonic() - t0
     reply = response.choices[0].message.content or ""

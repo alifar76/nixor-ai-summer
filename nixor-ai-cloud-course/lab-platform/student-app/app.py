@@ -58,8 +58,8 @@ def ask_the_ai(messages: list[dict]) -> str:
     response = client.chat.completions.create(
         model=DEPLOYMENT,
         messages=messages,
-        temperature=0.7,
-        max_tokens=600,
+        temperature=1,
+        max_completion_tokens=600,
     )
     return response.choices[0].message.content
 
