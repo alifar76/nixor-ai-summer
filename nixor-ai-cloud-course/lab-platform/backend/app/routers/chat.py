@@ -35,8 +35,18 @@ _MAX_CONTEXT_CHARS = 2000
 _MAX_RETRIES_ON_429 = 2
 
 
+def _chat_endpoint() -> str:
+    """Prefer the Foundry endpoint (all 4 catalog models live there); fall back to the
+    classic Azure OpenAI endpoint so existing deployments keep working."""
+    return (settings.azure_foundry_endpoint or settings.azure_openai_endpoint).rstrip("/")
+
+
+def _chat_api_key() -> str:
+    return settings.azure_foundry_api_key or settings.azure_openai_api_key
+
+
 def _chat_url(deployment: str) -> str:
-    base = settings.azure_openai_endpoint.rstrip("/")
+    base = _chat_endpoint()
     return (
         f"{base}/openai/deployments/{deployment}"
         f"/chat/completions?api-version={settings.azure_openai_api_version}"
@@ -71,10 +81,10 @@ async def chat(body: ChatRequest, user: User = Depends(get_current_user)):
     deployment = str((selected or {}).get("model") or settings.azure_openai_deployment).strip()
     if not deployment:
         raise HTTPException(status_code=503, detail="Azure chat deployment is not configured.")
-    if not settings.azure_openai_endpoint or not settings.azure_openai_api_key:
+    if not _chat_endpoint() or not _chat_api_key():
         raise HTTPException(
             status_code=503,
-            detail="AI is not configured yet. Set AZURE_OPENAI_ENDPOINT and API key.",
+            detail="AI is not configured yet. Set AZURE_FOUNDRY_ENDPOINT/AZURE_OPENAI_ENDPOINT and the matching API key.",
         )
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
@@ -93,7 +103,7 @@ async def chat(body: ChatRequest, user: User = Depends(get_current_user)):
         "stream": True,
         "max_completion_tokens": 350,
     }
-    headers = {"api-key": settings.azure_openai_api_key, "Content-Type": "application/json"}
+    headers = {"api-key": _chat_api_key(), "Content-Type": "application/json"}
 
     async def event_stream():
         try:
