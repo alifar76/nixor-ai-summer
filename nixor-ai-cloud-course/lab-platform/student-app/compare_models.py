@@ -24,9 +24,9 @@ PROMPT = (
 # ── The 4 sandbox models ─────────────────────────────────────────────────────
 MODELS = [
     {
-        "id": "gpt-5.5",
-        "label": "GPT-5.5",
-        "deployment": os.environ.get("MODEL_GPT55_DEPLOYMENT", "oai-gpt55"),
+        "id": "gpt-5.3",
+        "label": "GPT-5.3",
+        "deployment": os.environ.get("MODEL_GPT53_DEPLOYMENT", "oai-gpt53"),
         "endpoint": os.environ.get("AZURE_OPENAI_ENDPOINT", ""),
         "api_key": os.environ.get("AZURE_OPENAI_API_KEY", ""),
     },

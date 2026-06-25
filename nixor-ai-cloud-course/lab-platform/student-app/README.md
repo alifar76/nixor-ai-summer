@@ -34,7 +34,7 @@ Each model has its own deployment and env var:
 
 | Model               | Env var                         | Deployment      |
 |---------------------|---------------------------------|-----------------|
-| GPT-5.5             | `MODEL_GPT55_DEPLOYMENT`        | `oai-gpt55`     |
+| GPT-5.3             | `MODEL_GPT53_DEPLOYMENT`        | `oai-gpt53`     |
 | Grok-4.3            | `MODEL_GROK43_DEPLOYMENT`       | `xai-grok43`    |
 | DeepSeek-V4-Pro     | `MODEL_DEEPSEEK_V4_PRO_DEPLOYMENT` | `ds-v4pro`   |
 | mistral-medium-3-5  | `MODEL_MISTRAL_MEDIUM_35_DEPLOYMENT` | `mstr-med35` |

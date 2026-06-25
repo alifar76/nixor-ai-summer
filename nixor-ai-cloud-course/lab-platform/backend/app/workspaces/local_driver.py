@@ -376,7 +376,7 @@ class LocalWorkspaceManager(WorkspaceManager):
             "AZURE_OPENAI_API_VERSION",
             "AZURE_FOUNDRY_ENDPOINT",
             "AZURE_FOUNDRY_API_KEY",
-            "MODEL_GPT55_DEPLOYMENT",
+            "MODEL_GPT53_DEPLOYMENT",
             "MODEL_GROK43_DEPLOYMENT",
             "MODEL_DEEPSEEK_V4_PRO_DEPLOYMENT",
             "MODEL_MISTRAL_MEDIUM_35_DEPLOYMENT",

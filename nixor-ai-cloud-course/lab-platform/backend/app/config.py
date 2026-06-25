@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     azure_foundry_endpoint: str = ""
     azure_foundry_api_key: str = ""
     # Deployment names for the 4 approved deployable models.
-    model_gpt55_deployment: str = "oai-gpt55"
+    model_gpt53_deployment: str = "oai-gpt53"
     model_grok43_deployment: str = "xai-grok43"
     model_deepseek_v4_pro_deployment: str = "ds-v4pro"
     model_mistral_medium_35_deployment: str = "mstr-med35"
@@ -164,10 +164,10 @@ class Settings(BaseSettings):
     def ai_models(self) -> list[dict[str, object]]:
         default_models = [
             {
-                "id": "gpt-5.5",
+                "id": "gpt-5.3",
                 "provider": "azure_openai",
-                "label": "GPT-5.5",
-                "model": self.model_gpt55_deployment or "oai-gpt55",
+                "label": "GPT-5.3",
+                "model": self.model_gpt53_deployment or "oai-gpt53",
                 "input": ["text", "image"],
                 "output": ["text"],
                 "chat_eligible": False,
