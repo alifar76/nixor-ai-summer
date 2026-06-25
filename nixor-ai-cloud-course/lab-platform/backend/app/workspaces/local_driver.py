@@ -29,7 +29,10 @@ from .base import FileNode, WorkspaceInfo, WorkspaceManager
 
 logger = logging.getLogger(__name__)
 
-_IGNORE_DIRS = {".git", "__pycache__", "node_modules", ".cache", ".venv", "venv", ".azure"}
+_IGNORE_DIRS = {".git", "__pycache__", "node_modules", ".cache", ".venv", "venv", ".azure", ".nixor_site"}
+# Files/dirs hidden from the Monaco file tree and read_file API. .nixor_creds must never
+# be exposed through the browser editor because that would defeat credential isolation.
+_HIDDEN_NAMES = frozenset({".nixor_creds", ".nixor_site"})
 _MAX_FILE_BYTES = 1_000_000
 
 # --- Mount-namespace jail primitives -------------------------------------------------- #
@@ -391,6 +394,43 @@ class LocalWorkspaceManager(WorkspaceManager):
     def touch_active(self, user_id: int) -> None:
         return None
 
+    def _write_creds_files(self, workspace_dir: pathlib.Path, secrets: dict[str, str]) -> None:
+        """Write API keys to .nixor_creds (0400) and a sitecustomize.py loader (0400)
+        into .nixor_site/ inside the workspace. Both are regenerated on every terminal
+        open so they stay in sync if keys rotate. The student can *read* the file with
+        deliberate effort (it's their uid), but it won't appear in `env`/`printenv`."""
+        try:
+            creds_path = workspace_dir / ".nixor_creds"
+            lines = [
+                "# Sandbox credentials — treat like a password, do not share\n",
+                "# Loaded automatically by Python; do not put these in your app code.\n",
+            ]
+            lines += [f"{k}={v}\n" for k, v in sorted(secrets.items())]
+            creds_path.write_text("".join(lines), encoding="utf-8")
+            creds_path.chmod(0o400)
+
+            site_dir = workspace_dir / ".nixor_site"
+            site_dir.mkdir(exist_ok=True)
+            loader = site_dir / "sitecustomize.py"
+            loader.write_text(
+                "# Auto-generated — loads sandbox credentials into os.environ for all Python processes.\n"
+                "# Do not edit; it is regenerated on every terminal open.\n"
+                "import os as _os, pathlib as _pl\n"
+                "_creds = _pl.Path(_os.environ.get('HOME', '/workspace')) / '.nixor_creds'\n"
+                "if _creds.exists():\n"
+                "    for _ln in _creds.read_text().splitlines():\n"
+                "        _ln = _ln.strip()\n"
+                "        if _ln and not _ln.startswith('#') and '=' in _ln:\n"
+                "            _k, _, _v = _ln.partition('=')\n"
+                "            _os.environ.setdefault(_k.strip(), _v.strip())\n"
+                "del _os, _pl, _creds\n",
+                encoding="utf-8",
+            )
+            loader.chmod(0o400)
+            site_dir.chmod(0o500)  # traversable but not listable
+        except OSError:
+            logger.warning("Could not write credentials files to workspace %s", workspace_dir, exc_info=True)
+
     def open_terminal(self, user_id: int, cols: int, rows: int) -> TerminalSession:
         ws = self.ensure_workspace(user_id)
         cwd = pathlib.Path(ws.container_id)
@@ -423,6 +463,36 @@ class LocalWorkspaceManager(WorkspaceManager):
             creds = (uid, gid)
 
         home = settings.terminal_jail_home if jailed else str(cwd)
+
+        # API keys must NOT appear in the shell's environment (visible via `env` /
+        # `printenv` / `/proc/self/environ`). We write them to a credentials file
+        # inside the workspace and load them automatically into every Python process
+        # via sitecustomize.py (placed on PYTHONPATH). This way `streamlit run app.py`
+        # and `python compare_models.py` get the keys through os.environ, but a student
+        # typing `env` in bash sees nothing sensitive.
+        _SECRET_KEYS = frozenset({
+            "AZURE_OPENAI_API_KEY",
+            "AZURE_FOUNDRY_API_KEY",
+        })
+        _PLAIN_KEYS = (
+            "AZURE_OPENAI_ENDPOINT",
+            "AZURE_OPENAI_DEPLOYMENT",
+            "AZURE_OPENAI_API_VERSION",
+            "AZURE_FOUNDRY_ENDPOINT",
+            "MODEL_GPT53_DEPLOYMENT",
+            "MODEL_GROK43_DEPLOYMENT",
+            "MODEL_DEEPSEEK_V4_PRO_DEPLOYMENT",
+            "MODEL_MISTRAL_MEDIUM_35_DEPLOYMENT",
+            "AI_MODEL_CATALOG_JSON",
+        )
+        secrets: dict[str, str] = {
+            k: v for k in _SECRET_KEYS if (v := os.environ.get(k, ""))
+        }
+        self._write_creds_files(cwd, secrets)
+
+        # .nixor_site/ lives inside the workspace; sitecustomize.py there is picked up
+        # by any Python interpreter spawned from this shell.
+        site_dir = home + "/.nixor_site"
         env = {
             "HOME": home,
             "PWD": home,
@@ -430,24 +500,9 @@ class LocalWorkspaceManager(WorkspaceManager):
             "PATH": f"{home}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             "PIP_USER": "1",
             "LANG": "C.UTF-8",
+            "PYTHONPATH": site_dir,
         }
-        # Pass the platform's Azure OpenAI credentials into the terminal so
-        # `streamlit run app.py` can reach the model without the student needing to
-        # configure anything. Values are inherited from the server process env (set
-        # in /etc/nixor-lab.env at deploy time); if unset here they're simply absent.
-        for _key in (
-            "AZURE_OPENAI_ENDPOINT",
-            "AZURE_OPENAI_API_KEY",
-            "AZURE_OPENAI_DEPLOYMENT",
-            "AZURE_OPENAI_API_VERSION",
-            "AZURE_FOUNDRY_ENDPOINT",
-            "AZURE_FOUNDRY_API_KEY",
-            "MODEL_GPT53_DEPLOYMENT",
-            "MODEL_GROK43_DEPLOYMENT",
-            "MODEL_DEEPSEEK_V4_PRO_DEPLOYMENT",
-            "MODEL_MISTRAL_MEDIUM_35_DEPLOYMENT",
-            "AI_MODEL_CATALOG_JSON",
-        ):
+        for _key in _PLAIN_KEYS:
             _val = os.environ.get(_key, "")
             if _val:
                 env[_key] = _val
@@ -532,6 +587,10 @@ class LocalWorkspaceManager(WorkspaceManager):
         full = (base / rel).resolve()
         if full != base and base not in full.parents:
             raise ValueError("Path escapes workspace root")
+        # Credential files must not be readable through the editor API even though they
+        # are owned by the student's uid (the API process runs as root and could read them).
+        if any(part in _HIDDEN_NAMES for part in full.parts):
+            raise ValueError("Path is restricted")
         return full
 
     def list_files(self, user_id: int) -> list[FileNode]:
@@ -539,11 +598,13 @@ class LocalWorkspaceManager(WorkspaceManager):
         root = self._workspace_dir(user_id)
         nodes: list[FileNode] = []
         for dirpath, dirnames, filenames in os.walk(root):
-            dirnames[:] = [d for d in dirnames if d not in _IGNORE_DIRS]
+            dirnames[:] = [d for d in dirnames if d not in _IGNORE_DIRS and d not in _HIDDEN_NAMES]
             rel_dir = pathlib.Path(dirpath).relative_to(root)
             if str(rel_dir) != ".":
                 nodes.append(FileNode(path=str(rel_dir), is_dir=True))
             for name in filenames:
+                if name in _HIDDEN_NAMES:
+                    continue
                 rel = (pathlib.Path(dirpath) / name).relative_to(root)
                 nodes.append(FileNode(path=str(rel), is_dir=False))
         nodes.sort(key=lambda n: (not n.is_dir, n.path))
