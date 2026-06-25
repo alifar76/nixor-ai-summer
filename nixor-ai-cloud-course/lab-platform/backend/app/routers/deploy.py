@@ -159,7 +159,7 @@ async def _deploy_cluster(
     yield _sse({"step": "Done! Your app is live."})
     yield _sse({"url": deploy_url_final})
     yield _sse({"done": True, "ok": True})
-    return deploy_url_final
+    return
 
 
 # --------------------------------------------------------------------------- #
@@ -283,7 +283,7 @@ async def _deploy_legacy(sandbox: StudentSandbox, workspace_dir: str, user: User
     yield _sse({"step": "Done! Your app is live."})
     yield _sse({"url": url})
     yield _sse({"done": True, "ok": True})
-    return url
+    return
 
 
 # --------------------------------------------------------------------------- #

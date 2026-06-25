@@ -30,7 +30,7 @@ STUDENT_PORT_START=9000
 STUDENT_PORT_END=9099
 
 : "${AGENT_SECRET:?Set AGENT_SECRET in your shell before running.}"
-: "${PLATFORM_VM_IP:?Set PLATFORM_VM_IP to the platform VM's public IP.}"
+: "${PLATFORM_VM_IP:?Set PLATFORM_VM_IP to the platform VM public IP.}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 AGENT_DIR="$SCRIPT_DIR/deploy-agent"
@@ -41,15 +41,11 @@ echo "[0/3] Ensuring resource group $RG in $LOCATION"
 az group create --name "$RG" --location "$LOCATION" \
   --tags course=nixor-ai-cloud component=student-cluster --output none
 
-# Read existing IPs for idempotency check
-declare -A EXISTING_IPS
-
 echo "[1/3] Creating $NODE_COUNT VMs (skipping any that already exist)"
 for i in $(seq 1 "$NODE_COUNT"); do
   VM_NAME="nixor-node-$i"
   if az vm show -g "$RG" -n "$VM_NAME" --query name -o tsv 2>/dev/null | grep -q "$VM_NAME"; then
     echo "      $VM_NAME already exists — skipping creation"
-    EXISTING_IPS["$VM_NAME"]="$(az vm show -d -g "$RG" -n "$VM_NAME" --query publicIps -o tsv)"
   else
     echo "      Creating $VM_NAME ($VM_SIZE)..."
     az vm create \
@@ -100,7 +96,7 @@ DNS_PREFIX="${DNS_PREFIX:-nixornode}"
 
 for i in $(seq 1 "$NODE_COUNT"); do
   VM_NAME="nixor-node-$i"
-  NODE_IP="${EXISTING_IPS[$VM_NAME]:-$(az vm show -d -g "$RG" -n "$VM_NAME" --query publicIps -o tsv)}"
+  NODE_IP="$(az vm show -d -g "$RG" -n "$VM_NAME" --query publicIps -o tsv)"
   NODE_IPS+=("$NODE_IP")
 
   # Assign an Azure DNS label so students get a human-readable hostname.
