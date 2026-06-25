@@ -102,14 +102,30 @@ def _validate_app(workspace_dir: str) -> str | None:
 # --------------------------------------------------------------------------- #
 
 def _zip_workspace(workspace_dir: str) -> bytes:
-    """Zip the student's workspace directory in memory and return the bytes."""
+    """Zip the student's workspace directory in memory and return the bytes.
+
+    SECURITY: this runs as the (root) server process, so it must not be tricked into
+    shipping host secrets into the student's container:
+      * Hidden files are skipped — never package `.nixor_creds`, `.env`, etc.
+      * Symlinks are skipped, and any file whose real path escapes the workspace is
+        skipped — so a symlink like `evil -> /etc/nixor-lab.env` can't exfiltrate the
+        platform's credentials (the server can read 0600 root files; the student can't,
+        but would be able to once they're zipped into their own image).
+    Hidden dirs are skipped too, except `.streamlit` (legitimate app config).
+    """
+    base = os.path.realpath(workspace_dir)
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for root, dirs, files in os.walk(workspace_dir):
-            # Skip hidden dirs (e.g. .git) except .streamlit config
             dirs[:] = [d for d in dirs if not d.startswith(".") or d == ".streamlit"]
             for fname in files:
+                if fname.startswith("."):
+                    continue  # skip .nixor_creds, .env, and any other dotfile
                 full = os.path.join(root, fname)
+                if os.path.islink(full):
+                    continue
+                if not os.path.realpath(full).startswith(base + os.sep):
+                    continue  # resolves outside the workspace (symlinked parent dir, etc.)
                 arcname = os.path.relpath(full, workspace_dir)
                 zf.write(full, arcname)
     return buf.getvalue()

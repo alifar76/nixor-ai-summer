@@ -60,8 +60,37 @@ app.include_router(deploy.router)
 app.include_router(terminal.router)
 
 
+_INSECURE_SIGNING_KEYS = {"", "dev-only-change-me"}
+
+
+def _check_signing_key() -> None:
+    """Refuse to start with a forgeable session key.
+
+    The JWT signing key authenticates every session, including the instructor's. If it's
+    empty, the built-in dev default, or too short, anyone can mint a valid token for any
+    account. Fail fast with an actionable message instead of running insecurely. For local
+    development only, set ALLOW_INSECURE_SIGNING_KEY=1 to bypass."""
+    key = settings.session_signing_key.strip()
+    if key not in _INSECURE_SIGNING_KEYS and len(key) >= 16:
+        return
+    if os.getenv("ALLOW_INSECURE_SIGNING_KEY") == "1":
+        logger.critical(
+            "SESSION_SIGNING_KEY is empty/default/too short — sessions are FORGEABLE. "
+            "Running only because ALLOW_INSECURE_SIGNING_KEY=1. Never do this in production."
+        )
+        return
+    raise RuntimeError(
+        "SESSION_SIGNING_KEY is unset, the dev default, or shorter than 16 chars — "
+        "session tokens would be forgeable (full account takeover). Set a strong random "
+        "value in /etc/nixor-lab.env, e.g.  SESSION_SIGNING_KEY=$(openssl rand -hex 32)  "
+        "then restart. For local dev only, set ALLOW_INSECURE_SIGNING_KEY=1 to bypass."
+    )
+
+
 @app.on_event("startup")
 def on_startup() -> None:
+    # Fail fast on an insecure session key before serving anything.
+    _check_signing_key()
     # Restore from the persistent backup (if any) BEFORE creating tables, so an
     # ordinary restart keeps existing accounts/progress.
     restore_from_backup()
@@ -155,12 +184,18 @@ _FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 if _FRONTEND_DIST.is_dir():
     app.mount("/assets", StaticFiles(directory=_FRONTEND_DIST / "assets"), name="assets")
 
+    _DIST_ROOT = _FRONTEND_DIST.resolve()
+
     @app.get("/{full_path:path}")
     def spa(full_path: str):
         # API/ws paths are handled above; everything else returns the SPA shell.
-        candidate = _FRONTEND_DIST / full_path
-        if full_path and candidate.is_file():
-            return FileResponse(candidate)
-        return FileResponse(_FRONTEND_DIST / "index.html")
+        # SECURITY: resolve the candidate and confirm it stays inside dist/ before
+        # serving, so a traversal path (../../etc/passwd, the DB, app source) can't be
+        # read through the static handler. Anything outside falls through to index.html.
+        if full_path:
+            candidate = (_DIST_ROOT / full_path).resolve()
+            if candidate.is_file() and candidate.is_relative_to(_DIST_ROOT):
+                return FileResponse(candidate)
+        return FileResponse(_DIST_ROOT / "index.html")
 else:
     logger.warning("Frontend build not found at %s (run `npm run build`).", _FRONTEND_DIST)
