@@ -13,7 +13,9 @@ import logging
 import os
 import pathlib
 import pty
+import resource
 import shutil
+import signal
 import struct
 import sys
 import termios
@@ -62,6 +64,30 @@ def _unshare(flags: int) -> None:
     if _libc.unshare(ctypes.c_int(flags)) != 0:
         err = ctypes.get_errno()
         raise OSError(err, os.strerror(err))
+
+
+def _apply_rlimits() -> None:
+    """Cap the sandbox shell's resources so it cannot exhaust the host.
+
+    Applied in the forked child while still root (so the hard limit can be lowered) and
+    BEFORE setuid, so the caps are enforced against the unprivileged sandbox user that can
+    no longer raise them. RLIMIT_NPROC is the decisive fork-bomb defense: once the sandbox
+    uid reaches the process cap, fork() returns EAGAIN instead of bringing the box down.
+    Limits are clamped to the inherited hard limit and failures are non-fatal — a missing
+    cap must never prevent a student's terminal from opening."""
+    caps = (
+        (resource.RLIMIT_NPROC, settings.terminal_max_processes),
+        (resource.RLIMIT_NOFILE, settings.terminal_max_open_files),
+        (resource.RLIMIT_FSIZE, settings.terminal_max_file_mb * 1024 * 1024),
+        (resource.RLIMIT_CORE, 0),
+    )
+    for res_id, desired in caps:
+        try:
+            soft, hard = resource.getrlimit(res_id)
+            ceiling = desired if hard == resource.RLIM_INFINITY else min(desired, hard)
+            resource.setrlimit(res_id, (ceiling, ceiling))
+        except (ValueError, OSError):
+            logger.debug("could not set rlimit %s", res_id, exc_info=True)
 
 
 def _build_jail(jail_root: str, workspace_dir: str, home: str) -> None:
@@ -185,13 +211,28 @@ class TerminalSession:
             logger.debug("pty resize failed", exc_info=True)
 
     def close(self) -> None:
+        # The shell is its own session/process-group leader (setsid in _drop_privs), so its
+        # children — including anything a missed fork bomb spawned — share its pgid. Signal
+        # the whole group, not just bash, so nothing is left running to keep consuming the
+        # sandbox uid's process budget.
+        try:
+            pgid = os.getpgid(self.process.pid)
+        except (ProcessLookupError, OSError):
+            pgid = None
+
+        def _signal(sig: int) -> None:
+            if pgid is not None:
+                os.killpg(pgid, sig)
+            else:
+                self.process.send_signal(sig)
+
         try:
             if self.process.poll() is None:
-                self.process.terminate()
+                _signal(signal.SIGTERM)
                 self.process.wait(timeout=1)
         except Exception:
             try:
-                self.process.kill()
+                _signal(signal.SIGKILL)
             except Exception:
                 pass
         self.socket.close()
@@ -407,6 +448,10 @@ class LocalWorkspaceManager(WorkspaceManager):
                 logger.debug("TIOCSCTTY failed; job control may be unavailable", exc_info=True)
             if jailed:
                 _build_jail(jail_root, str(cwd), home)
+            # Apply resource caps while still root (lets us lower the hard limit), before
+            # dropping privileges. This is the hard guarantee against fork/disk bombs, on top
+            # of the syntactic guard in terminal.py.
+            _apply_rlimits()
             if creds is not None:
                 uid, gid = creds
                 os.setgid(gid)

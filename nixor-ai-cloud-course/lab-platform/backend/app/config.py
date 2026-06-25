@@ -119,6 +119,16 @@ class Settings(BaseSettings):
     terminal_require_non_root: bool = True
     local_sandbox_uid: int = 1000
     local_sandbox_gid: int = 1000
+    # Per-terminal OS resource caps (defense-in-depth against fork/disk bombs). These are
+    # applied as rlimits in the forked child *before* it drops to the sandbox user, so even
+    # a command that slips past the syntactic guard cannot exhaust the host. RLIMIT_NPROC is
+    # the hard stop for fork bombs like `:(){ :|:& };:` — once the sandbox uid hits this many
+    # processes, fork() fails with EAGAIN instead of taking the box down. Note: all student
+    # terminals share local_sandbox_uid, so this is a per-uid budget; keep it generous enough
+    # for normal use (streamlit + pip) but far below the host's pid_max.
+    terminal_max_processes: int = 256      # RLIMIT_NPROC
+    terminal_max_open_files: int = 2048    # RLIMIT_NOFILE
+    terminal_max_file_mb: int = 512        # RLIMIT_FSIZE — caps single-file size (disk-fill)
     # Terminal filesystem isolation. The interactive shell is confined to a chroot +
     # bind-mount jail in a private mount namespace: system dirs (/usr, /bin, /lib, ...)
     # are mounted read-only and only the student's own workspace is writable, so a

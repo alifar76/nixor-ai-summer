@@ -33,11 +33,33 @@ _BLOCK_RE = re.compile(settings.terminal_block_patterns, re.IGNORECASE)
 _ANSI_CSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 _PASTE_MARKER_RE = re.compile(r"(?:\x1b)?\[\s*20[01]~")
 
+# Fork-bomb detector. A fork bomb defines a function that recursively re-invokes itself
+# through a pipe, in the background, then calls it — e.g. the classic `:(){ :|:& };:`.
+# This MUST be matched against the whole line: the attack is built out of `|` and `;`,
+# the very characters `_split_shell_segments` splits on, so a per-segment check never sees
+# an intact pattern. The named backreference (?P=f) keeps it general across obfuscations
+# (any function name, extra whitespace, `bash -c '...'` wrappers, `function f` form).
+_FORK_BOMB_RE = re.compile(
+    r"(?:function\s+)?(?P<f>[\w:.]+)\s*\(\)\s*\{[^{}]*?"
+    r"(?P=f)\s*\|\s*(?P=f)[^{}]*?&[^{}]*?\}\s*;?\s*(?P=f)\b",
+    re.IGNORECASE,
+)
+
 
 def _split_shell_segments(line: str) -> list[str]:
     # Split simple command chains so `cmd1; cmd2` and `cmd1 && cmd2` are checked.
     parts = re.split(r"(?:&&|\|\||;|\|)", line)
     return [p.strip() for p in parts if p.strip()]
+
+
+def _line_is_dangerous(line: str) -> bool:
+    """Inspect a full command line. Whole-line checks (fork bombs and any payload that
+    weaponises the segment delimiters) run first against both the line and a quote-stripped
+    copy — so wrapped forms like `/bin/bash -c '...'` are seen — then per-segment checks."""
+    for variant in (line, line.replace("'", " ").replace('"', " ")):
+        if variant and (_FORK_BOMB_RE.search(variant) or _BLOCK_RE.search(variant)):
+            return True
+    return any(_is_dangerous_segment(seg) for seg in _split_shell_segments(line))
 
 
 def _is_dangerous_segment(segment: str) -> bool:
@@ -112,11 +134,8 @@ class _CommandGuard:
         for ch in raw_input:
             if ch in {"\r", "\n"}:
                 line = self._normalize(self._buffer)
-                if line:
-                    for segment in _split_shell_segments(line):
-                        if _is_dangerous_segment(segment):
-                            blocked = True
-                            break
+                if line and _line_is_dangerous(line):
+                    blocked = True
                 self._buffer = ""
                 continue
             if ch in {"\b", "\x7f"}:
