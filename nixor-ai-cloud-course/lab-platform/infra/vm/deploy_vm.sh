@@ -15,8 +15,12 @@
 # `az vm run-command` — they are NEVER written into cloud-init/custom-data or git.
 #
 # Usage:
-#   SESSION_SIGNING_KEY=... [INSTRUCTOR_EMAIL=... INSTRUCTOR_PASSWORD=... SIGNUP_ACCESS_CODE=...] \
+#   SESSION_SIGNING_KEY=... [INSTRUCTOR_EMAIL=... INSTRUCTOR_PASSWORD=... SIGNUP_ACCESS_CODE=... \
+#     EXTRA_CORS_ORIGINS="https://<ip>.nip.io,https://other.example"] \
 #   ./deploy_vm.sh <resource-group> <location> <vm-name> <domain>
+#
+#   EXTRA_CORS_ORIGINS — optional, comma-separated origins appended to CORS_ORIGINS in
+#     addition to https://<domain>. Use when the VM is served under multiple hostnames.
 #
 #   <domain> must already have a DNS A record pointing at the VM's public IP for Caddy to
 #   get a TLS cert. For a quick test you can re-run after the IP is known, or use
@@ -39,6 +43,12 @@ AZURE_OPENAI_API_KEY="${AZURE_OPENAI_API_KEY:-}"
 AZURE_OPENAI_DEPLOYMENT="${AZURE_OPENAI_DEPLOYMENT:-gpt-4.1-mini}"
 AZURE_OPENAI_API_VERSION="${AZURE_OPENAI_API_VERSION:-2024-10-21}"
 SIGNUP_ACCESS_CODE="${SIGNUP_ACCESS_CODE:-}"
+# Extra CORS origins beyond https://<domain>, comma-separated. Use this when the VM is
+# reachable under more than one hostname (e.g. a friendly cloudapp.azure.com label plus
+# the <ip>.nip.io fallback). They are appended to CORS_ORIGINS so a redeploy doesn't
+# clobber a manually-added origin.
+#   e.g. EXTRA_CORS_ORIGINS="https://4.223.137.167.nip.io"
+EXTRA_CORS_ORIGINS="${EXTRA_CORS_ORIGINS:-}"
 INSTRUCTOR_EMAIL="${INSTRUCTOR_EMAIL:-}"
 INSTRUCTOR_PASSWORD="${INSTRUCTOR_PASSWORD:-}"
 # Service principal for the Session 3 one-click deploy (runs `az webapp up` on students'
@@ -103,6 +113,19 @@ az network nsg rule create --resource-group "$RG" --nsg-name "${VM_NAME}NSG" --n
   --source-address-prefixes "$MY_IP" --only-show-errors >/dev/null 2>&1 || true
 
 echo "[6/7] Pushing app config + container runner to the VM"
+# Assemble the CORS origin list: the primary domain plus any extras (deduped, trimmed).
+CORS_ORIGINS="https://$DOMAIN"
+if [[ -n "$EXTRA_CORS_ORIGINS" ]]; then
+  IFS=',' read -ra _extra <<<"$EXTRA_CORS_ORIGINS"
+  for _origin in "${_extra[@]}"; do
+    _origin="$(echo "$_origin" | xargs)"   # trim whitespace
+    [[ -z "$_origin" ]] && continue
+    [[ ",$CORS_ORIGINS," == *",$_origin,"* ]] && continue   # skip duplicates
+    CORS_ORIGINS="$CORS_ORIGINS,$_origin"
+  done
+fi
+echo "      CORS origins: $CORS_ORIGINS"
+
 # App env (secrets) — written to /etc/nixor-lab.env on the VM, never in git/custom-data.
 ENV_CONTENT=$(cat <<EOF
 DATABASE_URL=sqlite:////var/lib/nixor-lab/lab_platform.db
@@ -116,7 +139,7 @@ TERMINAL_BLOCK_DANGEROUS_COMMANDS=true
 TERMINAL_ISOLATION=preferred
 SESSION_SIGNING_KEY=$SESSION_SIGNING_KEY
 SIGNUP_ACCESS_CODE=$SIGNUP_ACCESS_CODE
-CORS_ORIGINS=https://$DOMAIN
+CORS_ORIGINS=$CORS_ORIGINS
 AZURE_OPENAI_ENDPOINT=$AZURE_OPENAI_ENDPOINT
 AZURE_OPENAI_API_KEY=$AZURE_OPENAI_API_KEY
 AZURE_OPENAI_DEPLOYMENT=$AZURE_OPENAI_DEPLOYMENT
