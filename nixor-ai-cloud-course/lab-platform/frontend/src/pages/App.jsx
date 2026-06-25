@@ -19,6 +19,8 @@ export function App() {
   const [content, setContent] = useState("");
   const [loadingFile, setLoadingFile] = useState(false);
   const [banner, setBanner] = useState("");
+  const [aiModels, setAiModels] = useState([]);
+  const [selectedModelId, setSelectedModelId] = useState("");
   const [leftPct, setLeftPct] = useState(28);
   const [centerPct, setCenterPct] = useState(44);
   const [editorPct, setEditorPct] = useState(60);
@@ -37,11 +39,20 @@ export function App() {
     setUser(me);
 
     // Course should always load, even if workspace/terminal setup fails.
-    const [courseRes, progressRes] = await Promise.all([api.course(), api.progress()]);
+    const [courseRes, progressRes, modelsRes] = await Promise.all([
+      api.course(),
+      api.progress(),
+      api.aiModels().catch(() => ({ models: [], default_model_id: "" })),
+    ]);
     const sessions = courseRes.sessions || [];
     setCourse(sessions);
     setSelectedSessionId((prev) => prev || sessions?.[0]?.id || "");
     setCompleted(progressRes.completed || []);
+    const models = modelsRes.models || [];
+    setAiModels(models);
+    const chatModels = models.filter((m) => m.chat_eligible);
+    const fallbackId = chatModels.length > 0 ? chatModels[0].id : "";
+    setSelectedModelId(modelsRes.default_model_id || fallbackId);
 
     try {
       await api.workspaceStart();
@@ -102,7 +113,7 @@ export function App() {
 
   async function sendChat(messages, onDelta) {
     const context = selectedFile ? `File: ${selectedFile}\n\n${content.slice(0, 5000)}` : "";
-    await api.chat(messages, context, onDelta);
+    await api.chat(messages, { context, modelId: selectedModelId }, onDelta);
   }
 
   function startColumnResize(edge) {
@@ -331,7 +342,12 @@ export function App() {
         )}
 
         <div className="right-col">
-          <ChatPanel onSend={sendChat} />
+        <ChatPanel
+          onSend={sendChat}
+          models={aiModels}
+          selectedModelId={selectedModelId}
+          onSelectModel={setSelectedModelId}
+        />
         </div>
       </main>
     </div>

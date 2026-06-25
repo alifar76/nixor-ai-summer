@@ -119,10 +119,15 @@ export class ApiClient {
   }
 
   async chat(messages, context, onDelta) {
+    let modelId = "";
+    if (typeof context === "object" && context !== null) {
+      modelId = context.modelId || "";
+      context = context.context || "";
+    }
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: this._headers({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ messages, context }),
+      body: JSON.stringify({ messages, context, model_id: modelId }),
     });
     if (!res.ok || !res.body) {
       throw new Error("Chat request failed");
@@ -145,6 +150,10 @@ export class ApiClient {
         onDelta(payload);
       }
     }
+  }
+
+  aiModels() {
+    return this._json("/api/ai/models");
   }
 }
 

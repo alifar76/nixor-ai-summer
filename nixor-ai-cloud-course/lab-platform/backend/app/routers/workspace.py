@@ -154,6 +154,15 @@ def deploy_cmd(
         f"AZURE_OPENAI_API_KEY={api_key} "
         f"AZURE_OPENAI_DEPLOYMENT={deployment} "
         f"AZURE_OPENAI_API_VERSION={api_version} "
+        f"AZURE_FOUNDRY_ENDPOINT={settings.azure_foundry_endpoint} "
+        f"AZURE_FOUNDRY_API_KEY={settings.azure_foundry_api_key} "
+        f"MODEL_GPT55_DEPLOYMENT={settings.model_gpt55_deployment} "
+        f"MODEL_GROK43_DEPLOYMENT={settings.model_grok43_deployment} "
+        f"MODEL_DEEPSEEK_V4_PRO_DEPLOYMENT={settings.model_deepseek_v4_pro_deployment} "
+        f"MODEL_MISTRAL_MEDIUM_35_DEPLOYMENT={settings.model_mistral_medium_35_deployment} "
+        f"MODEL_FLUX2_PRO_DEPLOYMENT={settings.model_flux2_pro_deployment} "
+        f"MODEL_SORA2_DEPLOYMENT={settings.model_sora2_deployment} "
+        f"AI_MODEL_CATALOG_JSON={settings.ai_model_catalog_json} "
         f"WEBSITES_PORT=8000"
     )
 

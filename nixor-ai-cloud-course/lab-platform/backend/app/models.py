@@ -119,6 +119,18 @@ class ChatRequest(BaseModel):
     messages: list[ChatMessage]
     # Optional context the frontend can attach (e.g. the file the student is editing).
     context: str = ""
+    # Optional UI-selected model id from /api/ai/models.
+    model_id: str = ""
+
+
+class AIModelInfo(BaseModel):
+    id: str
+    provider: str
+    label: str
+    model: str
+    input: list[str] = []
+    output: list[str] = []
+    chat_eligible: bool = False
 
 
 class SandboxInfo(BaseModel):

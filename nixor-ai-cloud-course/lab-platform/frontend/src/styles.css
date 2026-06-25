@@ -226,6 +226,16 @@ body.resizing {
   font-size: 1rem;
 }
 
+.chat-model-select {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  background: #f8fafc;
+  color: #0f172a;
+  padding: 0.2rem 0.45rem;
+  max-width: 230px;
+}
+
 .course-panel .session-tabs {
   display: flex;
   gap: 0.4rem;
@@ -361,6 +371,34 @@ body.resizing {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 0.3rem;
+}
+
+.ai-model-grid {
+  margin-top: 0.45rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.3rem;
+}
+
+.ai-model-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.28rem 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.08rem;
+  background: #f8fafc;
+}
+
+.ai-model-card strong {
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+
+.ai-model-card span,
+.ai-model-card small {
+  font-size: 0.72rem;
+  color: #334155;
 }
 
 @media (max-width: 1200px) {
