@@ -351,6 +351,70 @@ class LocalWorkspaceManager(WorkspaceManager):
                 shutil.copytree(item, dst)
             else:
                 shutil.copy2(item, dst)
+        self._refresh_legacy_workspace_files(target)
+
+    @staticmethod
+    def _refresh_legacy_workspace_files(target: pathlib.Path) -> None:
+        """Apply safe in-place upgrades to old starter files in existing workspaces.
+
+        This keeps prior student workspaces usable after platform upgrades without
+        deleting the whole directory. Updates are narrowly scoped and only touch known
+        starter defaults from older templates.
+        """
+        rewrites = {
+            "app.py": (
+                ("gpt-5.3 via deployment `oai-gpt53` by default", "gpt-5.5 via deployment `gpt-5-5` by default"),
+                ("api_version=os.environ.get(\"AZURE_OPENAI_API_VERSION\", \"2024-10-21\"),",
+                 "api_version=(\n"
+                 "        os.environ.get(\"AZURE_OPENAI_API_VERSION\", \"\")\n"
+                 "        or os.environ.get(\"AZURE_FOUNDRY_API_VERSION\", \"\")\n"
+                 "        or \"2024-10-21\"\n"
+                 "    ),"),
+                ("DEPLOYMENT = os.environ.get(\"AZURE_OPENAI_DEPLOYMENT\", \"oai-gpt53\")",
+                 "DEPLOYMENT = (\n"
+                 "    os.environ.get(\"MODEL_GPT55_DEPLOYMENT\", \"\")\n"
+                 "    or os.environ.get(\"MODEL_GPT53_DEPLOYMENT\", \"\")\n"
+                 "    or os.environ.get(\"AZURE_OPENAI_DEPLOYMENT\", \"\")\n"
+                 "    or \"gpt-5-5\"\n"
+                 ")"),
+                ("DEPLOYMENT = os.environ.get(\"AZURE_OPENAI_DEPLOYMENT\", \"gpt-5-5\")",
+                 "DEPLOYMENT = (\n"
+                 "    os.environ.get(\"MODEL_GPT55_DEPLOYMENT\", \"\")\n"
+                 "    or os.environ.get(\"MODEL_GPT53_DEPLOYMENT\", \"\")\n"
+                 "    or os.environ.get(\"AZURE_OPENAI_DEPLOYMENT\", \"\")\n"
+                 "    or \"gpt-5-5\"\n"
+                 ")"),
+                ("temperature=0.7,", "temperature=1,"),
+                ("max_tokens=600,", "max_completion_tokens=600,"),
+            ),
+            "compare_models.py": (
+                ("\"id\": \"gpt-5.3\",", "\"id\": \"gpt-5.5\","),
+                ("\"label\": \"GPT-5.3\",", "\"label\": \"GPT-5.5\","),
+                ("\"deployment\": os.environ.get(\"MODEL_GPT53_DEPLOYMENT\", \"oai-gpt53\"),",
+                 "\"deployment\": (\n"
+                 "            os.environ.get(\"MODEL_GPT55_DEPLOYMENT\", \"\")\n"
+                 "            or os.environ.get(\"MODEL_GPT53_DEPLOYMENT\", \"\")\n"
+                 "            or \"gpt-5-5\"\n"
+                 "        ),"),
+            ),
+        }
+        for rel, replacements in rewrites.items():
+            file_path = target / rel
+            if not file_path.is_file():
+                continue
+            try:
+                data = file_path.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            new_data = data
+            for old, new in replacements:
+                new_data = new_data.replace(old, new)
+            if new_data == data:
+                continue
+            try:
+                file_path.write_text(new_data, encoding="utf-8")
+            except OSError:
+                logger.debug("Could not refresh legacy workspace file %s", file_path, exc_info=True)
 
     def ensure_workspace(self, user_id: int) -> WorkspaceInfo:
         ws_dir = self._workspace_dir(user_id)
@@ -479,6 +543,7 @@ class LocalWorkspaceManager(WorkspaceManager):
             "AZURE_OPENAI_DEPLOYMENT",
             "AZURE_OPENAI_API_VERSION",
             "AZURE_FOUNDRY_ENDPOINT",
+            "MODEL_GPT55_DEPLOYMENT",
             "MODEL_GPT53_DEPLOYMENT",
             "MODEL_GROK43_DEPLOYMENT",
             "MODEL_DEEPSEEK_V4_PRO_DEPLOYMENT",

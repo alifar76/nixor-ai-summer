@@ -51,16 +51,17 @@ class Settings(BaseSettings):
     # --- Azure AI Foundry (the in-app chatbot) ---
     azure_openai_endpoint: str = ""        # https://<resource>.openai.azure.com/  or  https://<resource>.cognitiveservices.azure.com/
     azure_openai_api_key: str = ""
-    # Deployment that backs the in-app coding chatbot (the platform tutor). This is a
-    # lighter/cheaper model than the deployable catalog below — gpt-5.3.
-    azure_openai_deployment: str = "oai-gpt53"
+    # Deployment that backs the in-app coding chatbot (the platform tutor).
+    azure_openai_deployment: str = "gpt-5-5"
     azure_openai_api_version: str = "2024-10-21"
     # Azure AI Foundry endpoint/key for the broader multi-model catalog available to
     # students in terminal/workspace and deploy targets.
     azure_foundry_endpoint: str = ""
     azure_foundry_api_key: str = ""
     # Deployment names for the 4 approved deployable models.
-    model_gpt53_deployment: str = "oai-gpt53"
+    # MODEL_GPT53_DEPLOYMENT is kept for backward compatibility with older student apps.
+    model_gpt55_deployment: str = "gpt-5-5"
+    model_gpt53_deployment: str = ""
     model_grok43_deployment: str = "xai-grok43"
     model_deepseek_v4_pro_deployment: str = "ds-v4pro"
     model_mistral_medium_35_deployment: str = "mstr-med35"
@@ -68,8 +69,8 @@ class Settings(BaseSettings):
     # Expected shape: [{"id","provider","label","model","input","output","chat_eligible"}...]
     ai_model_catalog_json: str = ""
     # Model id for the built-in chatbot. The chatbot always falls back to
-    # azure_openai_deployment (gpt-5.3) when this id isn't a chat-eligible catalog entry.
-    chat_default_model_id: str = "gpt-5.3"
+    # azure_openai_deployment when this id isn't a chat-eligible catalog entry.
+    chat_default_model_id: str = "gpt-5.5"
 
     # --- Server-side deploy (Session 3 one-click "Deploy to Azure") ---
     # The platform deploys each student's app into THEIR resource group on their behalf,
@@ -183,13 +184,23 @@ class Settings(BaseSettings):
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
+    @property
+    def primary_text_model_deployment(self) -> str:
+        """Primary OpenAI-family deployment used in starter apps/catalog."""
+        return (
+            self.model_gpt55_deployment
+            or self.model_gpt53_deployment
+            or self.azure_openai_deployment
+            or "gpt-5-5"
+        )
+
     def ai_models(self) -> list[dict[str, object]]:
         default_models = [
             {
-                "id": "gpt-5.3",
+                "id": "gpt-5.5",
                 "provider": "azure_openai",
-                "label": "GPT-5.3",
-                "model": self.model_gpt53_deployment or "oai-gpt53",
+                "label": "GPT-5.5",
+                "model": self.primary_text_model_deployment,
                 "input": ["text", "image"],
                 "output": ["text"],
                 "chat_eligible": False,

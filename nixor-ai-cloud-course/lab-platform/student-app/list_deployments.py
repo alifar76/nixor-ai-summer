@@ -2,7 +2,7 @@
 list_deployments.py — discover what AI deployments are actually available.
 
 Run this in the platform terminal to see the real deployment names in your
-Azure subscription, then update MODEL_GPT53_DEPLOYMENT (and the others) in
+Azure subscription, then update MODEL_GPT55_DEPLOYMENT (and the others) in
 /etc/nixor-lab.env to match.
 
     python list_deployments.py
@@ -82,6 +82,7 @@ def main():
     print("  Current env vars:")
     for var in [
         "AZURE_OPENAI_DEPLOYMENT",
+        "MODEL_GPT55_DEPLOYMENT",
         "MODEL_GPT53_DEPLOYMENT",
         "MODEL_GROK43_DEPLOYMENT",
         "MODEL_DEEPSEEK_V4_PRO_DEPLOYMENT",
@@ -89,7 +90,7 @@ def main():
     ]:
         print(f"    {var}={os.environ.get(var, '(not set)')!r}")
     print("=" * 72)
-    print("  If MODEL_GPT53_DEPLOYMENT is not in the list above, update")
+    print("  If MODEL_GPT55_DEPLOYMENT is not in the list above, update")
     print("  /etc/nixor-lab.env with the correct deployment name and restart.")
     print("=" * 72)
 

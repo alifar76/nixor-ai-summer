@@ -164,12 +164,12 @@ async def _deploy_cluster(
     yield _sse({"log": f"  {len(zip_bytes) // 1024} KB zipped"})
 
     # Resolve AI credentials: per-student first, then platform shared. Student apps
-    # default to a deployable catalog model (gpt-5.3).
+    # default to the primary deployable text model (GPT-5.5).
     endpoint = sandbox.azure_openai_endpoint or settings.azure_openai_endpoint
     api_key = sandbox.azure_openai_api_key or settings.azure_openai_api_key
     deployment = (
         sandbox.azure_openai_deployment
-        or settings.model_gpt53_deployment
+        or settings.primary_text_model_deployment
         or settings.azure_openai_deployment
     )
     api_version = settings.azure_openai_api_version
@@ -195,7 +195,8 @@ async def _deploy_cluster(
                     "x-aoai-version": api_version,
                     "x-foundry-endpoint": foundry_endpoint,
                     "x-foundry-key": foundry_api_key,
-                    "x-model-gpt53-deployment": settings.model_gpt53_deployment,
+                    "x-model-gpt55-deployment": settings.primary_text_model_deployment,
+                    "x-model-gpt53-deployment": settings.primary_text_model_deployment,
                     "x-model-grok43-deployment": settings.model_grok43_deployment,
                     "x-model-deepseek-v4-pro-deployment": settings.model_deepseek_v4_pro_deployment,
                     "x-model-mistral-medium-35-deployment": settings.model_mistral_medium_35_deployment,
@@ -332,7 +333,8 @@ async def _deploy_legacy(sandbox: StudentSandbox, workspace_dir: str, user: User
             f"AZURE_OPENAI_API_VERSION={api_version}",
             f"AZURE_FOUNDRY_ENDPOINT={settings.azure_foundry_endpoint}",
             f"AZURE_FOUNDRY_API_KEY={settings.azure_foundry_api_key}",
-            f"MODEL_GPT53_DEPLOYMENT={settings.model_gpt53_deployment}",
+            f"MODEL_GPT55_DEPLOYMENT={settings.primary_text_model_deployment}",
+            f"MODEL_GPT53_DEPLOYMENT={settings.primary_text_model_deployment}",
             f"MODEL_GROK43_DEPLOYMENT={settings.model_grok43_deployment}",
             f"MODEL_DEEPSEEK_V4_PRO_DEPLOYMENT={settings.model_deepseek_v4_pro_deployment}",
             f"MODEL_MISTRAL_MEDIUM_35_DEPLOYMENT={settings.model_mistral_medium_35_deployment}",

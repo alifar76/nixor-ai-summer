@@ -63,7 +63,7 @@ def ai_models(user: User = Depends(get_current_user)):
 @router.post("/chat")
 async def chat(body: ChatRequest, user: User = Depends(get_current_user)):
     _ = user
-    # The in-app coding tutor runs on the dedicated chat deployment (gpt-5.3). A request
+    # The in-app coding tutor runs on the dedicated chat deployment (GPT-5.5). A request
     # may still name a model; we only honour it if it's a chat-eligible Azure OpenAI entry
     # in the catalog. Otherwise (the normal case — the 4-model catalog is deploy-only) we
     # fall back to the dedicated chat deployment rather than rejecting the request.

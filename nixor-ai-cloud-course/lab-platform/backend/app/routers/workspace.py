@@ -146,10 +146,10 @@ def deploy_cmd(
     # prefer the student's own scoped credentials, fall back to the platform shared ones.
     endpoint = sb.azure_openai_endpoint or settings.azure_openai_endpoint
     api_key = sb.azure_openai_api_key or settings.azure_openai_api_key
-    # Student apps default to a deployable catalog model (gpt-5.3).
+    # Student apps default to the primary deployable text model (GPT-5.5).
     deployment = (
         sb.azure_openai_deployment
-        or settings.model_gpt53_deployment
+        or settings.primary_text_model_deployment
         or settings.azure_openai_deployment
     )
     api_version = settings.azure_openai_api_version
@@ -161,7 +161,8 @@ def deploy_cmd(
         f"AZURE_OPENAI_API_VERSION={api_version} "
         f"AZURE_FOUNDRY_ENDPOINT={settings.azure_foundry_endpoint} "
         f"AZURE_FOUNDRY_API_KEY={settings.azure_foundry_api_key} "
-        f"MODEL_GPT53_DEPLOYMENT={settings.model_gpt53_deployment} "
+        f"MODEL_GPT55_DEPLOYMENT={settings.primary_text_model_deployment} "
+        f"MODEL_GPT53_DEPLOYMENT={settings.primary_text_model_deployment} "
         f"MODEL_GROK43_DEPLOYMENT={settings.model_grok43_deployment} "
         f"MODEL_DEEPSEEK_V4_PRO_DEPLOYMENT={settings.model_deepseek_v4_pro_deployment} "
         f"MODEL_MISTRAL_MEDIUM_35_DEPLOYMENT={settings.model_mistral_medium_35_deployment} "
