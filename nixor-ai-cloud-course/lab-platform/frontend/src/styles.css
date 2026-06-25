@@ -152,15 +152,14 @@ main {
 .center-col,
 .right-col {
   min-height: 0;
-  display: flex;
-  flex-direction: column;
+  display: grid;
   gap: 0.35rem;
 }
 
-.center-col {
-  display: grid;
-  grid-template-rows: 68fr 10px 32fr;
-}
+/* Default single-column flow when no JS rows are set yet */
+.left-col  { grid-template-rows: 65fr 10px 35fr; }
+.center-col { grid-template-rows: 68fr 10px 32fr; }
+.right-col  { grid-template-rows: 1fr; }
 
 .resize-handle {
   border-radius: 8px;
@@ -209,7 +208,8 @@ body.resizing {
   border: 1px solid #dbe2ea;
   border-radius: 12px;
   padding: 0.45rem;
-  min-height: 0;
+  min-height: 0;       /* honour the grid cell — don't overflow it */
+  overflow: hidden;    /* clip content; inner scrollable areas handle their own scroll */
   display: flex;
   flex-direction: column;
 }
@@ -383,8 +383,7 @@ body.resizing {
 
 /* ----- Deploy panel (Session 3 cluster deploy) ----- */
 .deploy-panel {
-  margin-top: 0.5rem;
-  flex: 0 0 auto;
+  /* lives in its own grid row in the left-col — no manual margin needed */
 }
 .deploy-panel .panel-header {
   font-weight: 600;
@@ -406,6 +405,9 @@ body.resizing {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 /* ── Slot card ── */

@@ -22,11 +22,13 @@ export function App() {
   const [leftPct, setLeftPct] = useState(28);
   const [centerPct, setCenterPct] = useState(44);
   const [editorPct, setEditorPct] = useState(60);
+  const [leftCoursePct, setLeftCoursePct] = useState(65);
   const [isNarrow, setIsNarrow] = useState(
     typeof window !== "undefined" ? window.innerWidth <= 1200 : false
   );
   const mainRef = useRef(null);
   const centerRef = useRef(null);
+  const leftColRef = useRef(null);
 
   const completedSet = useMemo(() => new Set(completed), [completed]);
 
@@ -132,6 +134,50 @@ export function App() {
     document.addEventListener("mouseup", onUp);
   }
 
+  function startLeftRowResize(evt) {
+    evt.preventDefault();
+    const col = leftColRef.current;
+    if (!col) return;
+
+    const HANDLE_PX = 10;
+    const MIN_COURSE_PX = 120;
+    const MIN_DEPLOY_PX = 80;
+
+    const rect = col.getBoundingClientRect();
+    const colHeight = rect.height;
+    const startY = evt.clientY;
+    const startCoursePx = (leftCoursePct / 100) * colHeight;
+
+    const handle = evt.currentTarget;
+    if (handle.setPointerCapture && typeof evt.pointerId === "number") {
+      handle.setPointerCapture(evt.pointerId);
+    }
+
+    const onMove = (moveEvt) => {
+      const deltaPx = moveEvt.clientY - startY;
+      const maxCoursePx = Math.max(MIN_COURSE_PX, colHeight - MIN_DEPLOY_PX - HANDLE_PX);
+      const nextCoursePx = Math.max(MIN_COURSE_PX, Math.min(maxCoursePx, startCoursePx + deltaPx));
+      setLeftCoursePct((nextCoursePx / colHeight) * 100);
+    };
+
+    const onUp = (upEvt) => {
+      if (handle.releasePointerCapture && typeof upEvt.pointerId === "number") {
+        try { handle.releasePointerCapture(upEvt.pointerId); } catch { /* gone */ }
+      }
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      window.removeEventListener("blur", onUp);
+      document.body.classList.remove("resizing");
+    };
+
+    document.body.classList.add("resizing");
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    window.addEventListener("blur", onUp);
+  }
+
   function startRowResize(evt) {
     evt.preventDefault();
     const center = centerRef.current;
@@ -215,7 +261,15 @@ export function App() {
             : { gridTemplateColumns: `${leftPct}fr 10px ${centerPct}fr 10px ${rightPct}fr` }
         }
       >
-        <div className="left-col">
+        <div
+          ref={leftColRef}
+          className="left-col"
+          style={
+            isNarrow
+              ? undefined
+              : { gridTemplateRows: `${leftCoursePct}fr 10px ${Math.max(8, 100 - leftCoursePct)}fr` }
+          }
+        >
           <CoursePanel
             sessions={course}
             selectedSessionId={selectedSessionId}
@@ -223,6 +277,13 @@ export function App() {
             completedSet={completedSet}
             onToggleStep={toggleStep}
           />
+          {!isNarrow && (
+            <div
+              className="resize-handle horizontal"
+              onPointerDown={startLeftRowResize}
+              title="Drag to resize course and deploy panels"
+            />
+          )}
           <DeployPanel />
         </div>
 
