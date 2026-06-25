@@ -35,9 +35,19 @@ SYSTEM_PROMPT = (  # 👈 EDIT THIS — this is the AI's job description. Be spe
 #    These values come from your sandbox. Locally they're read from a .env file;
 #    in the cloud they're set as App Settings (never written in the code!).
 # ---------------------------------------------------------------------------
+# Prefer the Foundry endpoint when set (all 4 catalog models live there).
+# Fall back to the classic Azure OpenAI endpoint for compatibility.
+_endpoint = (
+    os.environ.get("AZURE_FOUNDRY_ENDPOINT", "")
+    or os.environ.get("AZURE_OPENAI_ENDPOINT", "")
+)
+_api_key = (
+    os.environ.get("AZURE_FOUNDRY_API_KEY", "")
+    or os.environ.get("AZURE_OPENAI_API_KEY", "")
+)
 client = AzureOpenAI(
-    api_key=os.environ["AZURE_OPENAI_API_KEY"],
-    azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
+    api_key=_api_key,
+    azure_endpoint=_endpoint,
     api_version=os.environ.get("AZURE_OPENAI_API_VERSION", "2024-10-21"),
 )
 DEPLOYMENT = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "oai-gpt53")
