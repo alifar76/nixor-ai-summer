@@ -24,8 +24,9 @@ FROM python:3.11-slim
 #  - git/curl: conveniences students reach for
 #  - ca-certificates: TLS for pip/httpx
 #  - nano: a beginner-friendly editor
+#  - vim: the `vi`/`vim` editor students reach for (provides both via update-alternatives)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        bash coreutils procps nano git curl ca-certificates \
+        bash coreutils procps nano vim git curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Azure CLI — used by the server-side one-click deploy (Session 3) to run

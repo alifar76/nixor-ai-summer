@@ -598,7 +598,18 @@ class LocalWorkspaceManager(WorkspaceManager):
         root = self._workspace_dir(user_id)
         nodes: list[FileNode] = []
         for dirpath, dirnames, filenames in os.walk(root):
-            dirnames[:] = [d for d in dirnames if d not in _IGNORE_DIRS and d not in _HIDDEN_NAMES]
+            # Skip noise/huge dirs, hidden internals, and any other dot-directory
+            # (e.g. `.local` filled by `pip install --user`, `.cache`, `.config`) so a
+            # student's source files don't get buried under thousands of package files
+            # after they install dependencies. `.streamlit` is kept — it's legitimate app
+            # config the student may want to edit. Mirrors the deploy-zip filter.
+            dirnames[:] = [
+                d
+                for d in dirnames
+                if d not in _IGNORE_DIRS
+                and d not in _HIDDEN_NAMES
+                and (not d.startswith(".") or d == ".streamlit")
+            ]
             rel_dir = pathlib.Path(dirpath).relative_to(root)
             if str(rel_dir) != ".":
                 nodes.append(FileNode(path=str(rel_dir), is_dir=True))

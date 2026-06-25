@@ -29,7 +29,9 @@ from .base import FileNode, WorkspaceInfo, WorkspaceManager
 logger = logging.getLogger(__name__)
 
 # Directories we never surface in the file tree (noise / huge).
-_IGNORE_DIRS = {".git", "__pycache__", "node_modules", ".cache", ".venv", "venv", ".azure"}
+# `.local` is where `pip install --user` writes packages — pruned so the file tree
+# isn't flooded with thousands of site-packages files after a student installs deps.
+_IGNORE_DIRS = {".git", "__pycache__", "node_modules", ".cache", ".venv", "venv", ".azure", ".local"}
 _MAX_FILE_BYTES = 1_000_000  # editor guard: don't load files larger than ~1 MB
 
 
