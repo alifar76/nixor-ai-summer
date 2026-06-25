@@ -43,6 +43,61 @@ def _sse(obj: dict) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# Pre-deploy validation: make sure the student actually has an app to ship.
+# Without this, an untouched workspace deploys the starter skeleton ("dummy app"),
+# which looks like a broken/empty deploy to the student.
+# --------------------------------------------------------------------------- #
+
+def _normalize(text: str) -> str:
+    """Whitespace-insensitive form for comparing an app to the starter template."""
+    return "\n".join(line.rstrip() for line in text.strip().splitlines())
+
+
+def _template_app_source() -> str | None:
+    """The starter app.py the workspace is seeded with, if available."""
+    template = os.path.join(settings.local_workspace_template_dir, "app.py")
+    try:
+        with open(template, "r", encoding="utf-8") as fh:
+            return fh.read()
+    except OSError:
+        return None
+
+
+def _validate_app(workspace_dir: str) -> str | None:
+    """Return a friendly error string if there's nothing real to deploy, else None.
+
+    Rejects three cases:
+      1. No app.py at all.
+      2. app.py is empty / whitespace only.
+      3. app.py is byte-for-byte the unmodified starter template — the student
+         hasn't built anything yet, so we'd just be shipping the demo skeleton.
+    """
+    app_path = os.path.join(workspace_dir, "app.py")
+    if not os.path.isfile(app_path):
+        return ("No app.py found in your workspace. The server is running, but you "
+                "need a functioning app to deploy. Open the editor and build your app "
+                "first.")
+    try:
+        with open(app_path, "r", encoding="utf-8") as fh:
+            source = fh.read()
+    except OSError as exc:
+        return f"Could not read app.py: {exc}"
+
+    if not source.strip():
+        return ("Your app.py is empty. The server is running, but you need a "
+                "functioning app to deploy. Write your Streamlit app in the editor "
+                "first.")
+
+    template = _template_app_source()
+    if template is not None and _normalize(source) == _normalize(template):
+        return ("Your app is still the starter template — you haven't changed it yet. "
+                "The server is ready, but deploy your own app once you've customised it "
+                "(start with APP_TITLE and SYSTEM_PROMPT in app.py).")
+
+    return None
+
+
+# --------------------------------------------------------------------------- #
 # Cluster path
 # --------------------------------------------------------------------------- #
 
@@ -311,6 +366,14 @@ async def deploy(
             yield _sse({"error": "Your workspace could not be found on the server."})
             yield _sse({"done": True, "ok": False})
         return StreamingResponse(_no_ws(), media_type="text/event-stream")
+
+    # Guard: don't deploy an empty workspace or the unmodified starter skeleton.
+    app_error = _validate_app(workspace_dir)
+    if app_error:
+        async def _no_app():
+            yield _sse({"error": app_error})
+            yield _sse({"done": True, "ok": False})
+        return StreamingResponse(_no_app(), media_type="text/event-stream")
 
     # Choose deploy path
     use_cluster = bool(settings.cluster_nodes)

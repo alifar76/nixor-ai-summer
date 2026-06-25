@@ -143,6 +143,20 @@ async def deploy(
             proc = await _run(cmd, cwd=str(src_dir))
             await proc.wait()  # ignore exit code — container may not exist
 
+        # Also free the target port from ANY other container squatting on it
+        # (e.g. a leftover test/validation container with a different name). Without
+        # this, `docker run -p` below fails or the student keeps seeing a stale app.
+        proc = await _run(
+            ["docker", "ps", "-aq", "--filter", f"publish={port}"], cwd=str(src_dir)
+        )
+        assert proc.stdout
+        ids_out, _ = await asyncio.gather(proc.stdout.read(), proc.wait())
+        stale_ids = [cid for cid in ids_out.decode().split() if cid]
+        for cid in stale_ids:
+            yield f"  freeing port {port} (removing container {cid[:12]})\n"
+            proc = await _run(["docker", "rm", "-f", cid], cwd=str(src_dir))
+            await proc.wait()
+
         # Step 3: run
         yield f"▶ Starting container on port {port}...\n"
         run_args = [
