@@ -251,21 +251,39 @@ class LocalWorkspaceManager(WorkspaceManager):
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._stopped: set[int] = set()
+        # Users whose workspace tree has already had its one-time ownership pass this
+        # process. Lets the hot path (every editor read / terminal open) skip the expensive
+        # full-tree walk; ownership of new files is set at write time instead.
+        self._initialized: set[int] = set()
 
     @staticmethod
-    def _set_tree_owner(root: pathlib.Path, uid: int, gid: int) -> None:
+    def _chown_path(path: pathlib.Path, uid: int, gid: int) -> None:
+        try:
+            os.chown(path, uid, gid)
+        except OSError:
+            logger.debug("chown failed for %s", path, exc_info=True)
+
+    @classmethod
+    def _set_tree_owner(cls, root: pathlib.Path, uid: int, gid: int) -> None:
+        """One-time ownership pass over a student's own source files.
+
+        Dependency/cache dirs (`.local` from `pip install --user`, `.cache`, `node_modules`,
+        venvs, `__pycache__`, `.git`) are pruned: they're created by the student's own uid
+        and are already correctly owned, and walking them is the operation that made the
+        whole platform hang under classroom load (a `.local` tree is tens of thousands of
+        files). This is now invoked at most once per student per process, off the hot path.
+        """
         for dirpath, dirnames, filenames in os.walk(root):
-            current = pathlib.Path(dirpath)
-            try:
-                os.chown(current, uid, gid)
-            except OSError:
-                logger.debug("chown failed for %s", current, exc_info=True)
+            dirnames[:] = [
+                d
+                for d in dirnames
+                if d not in _IGNORE_DIRS
+                and d not in _HIDDEN_NAMES
+                and (not d.startswith(".") or d == ".streamlit")
+            ]
+            cls._chown_path(pathlib.Path(dirpath), uid, gid)
             for name in filenames:
-                path = current / name
-                try:
-                    os.chown(path, uid, gid)
-                except OSError:
-                    logger.debug("chown failed for %s", path, exc_info=True)
+                cls._chown_path(pathlib.Path(dirpath) / name, uid, gid)
 
     @staticmethod
     def _derive_ids(user_id: int) -> tuple[int, int]:
@@ -335,7 +353,7 @@ class LocalWorkspaceManager(WorkspaceManager):
         self.ensure_workspace(user_id)
         return str(self._workspace_dir(user_id))
 
-    def _seed_workspace(self, target: pathlib.Path) -> None:
+    def _seed_workspace(self, target: pathlib.Path, creds: tuple[int, int] | None) -> None:
         """Restore the starter template into the workspace.
 
         Per-entry (not all-or-nothing): copy any top-level template file/dir that is
@@ -343,10 +361,23 @@ class LocalWorkspaceManager(WorkspaceManager):
         ``rm -rf /`` (which the jail confines to wiping their own workspace) gets the
         starter files back the next time a terminal opens or the editor refreshes,
         while files they created themselves are preserved.
+
+        Anything written here is owned by root (the API process), so it is chowned to the
+        student immediately — this replaces the old full-tree chown on every call.
         """
         template = pathlib.Path(settings.local_workspace_template_dir)
         if not template.exists() or not template.is_dir():
             return
+
+        def _own(path: pathlib.Path) -> None:
+            if creds is None:
+                return
+            uid, gid = creds
+            if path.is_dir():
+                self._set_tree_owner(path, uid, gid)
+            else:
+                self._chown_path(path, uid, gid)
+
         for item in template.iterdir():
             if item.name.startswith(".") and item.name not in {".env.example", ".gitignore"}:
                 continue
@@ -357,6 +388,7 @@ class LocalWorkspaceManager(WorkspaceManager):
                 shutil.copytree(item, dst)
             else:
                 shutil.copy2(item, dst)
+            _own(dst)
         # Platform-managed utility scripts are refreshed from the template even when they
         # already exist, so fixes (correct model params/endpoints) reach existing students.
         # These are course tools, not the student's own work — the student-authored app.py
@@ -366,6 +398,7 @@ class LocalWorkspaceManager(WorkspaceManager):
             if src.is_file():
                 try:
                     shutil.copy2(src, target / name)
+                    _own(target / name)
                 except OSError:
                     logger.debug("Could not refresh managed file %s", name, exc_info=True)
         self._refresh_legacy_workspace_files(target)
@@ -445,19 +478,25 @@ class LocalWorkspaceManager(WorkspaceManager):
 
     def ensure_workspace(self, user_id: int) -> WorkspaceInfo:
         ws_dir = self._workspace_dir(user_id)
+        creds = self._sandbox_credentials(user_id)
         with self._lock:
             ws_dir.mkdir(parents=True, exist_ok=True)
-            self._seed_workspace(ws_dir)
-            creds = self._sandbox_credentials(user_id)
+            self._seed_workspace(ws_dir, creds)
             if creds is not None:
                 uid, gid = creds
-                self._set_tree_owner(ws_dir, uid, gid)
-                # Lock the workspace to its owner so other students' uids cannot read or
-                # traverse it (defense in depth alongside the per-session jail).
+                # Full-tree ownership pass at most ONCE per student per process (covers a
+                # workspace restored from backup or created before this process). The walk
+                # skips dependency dirs so it stays cheap; the hot path never re-walks.
+                if user_id not in self._initialized:
+                    self._set_tree_owner(ws_dir, uid, gid)
+                # The workspace dir itself, every call (cheap single syscalls): owned by the
+                # student and locked to 0700 so other students' uids cannot read/traverse it.
+                self._chown_path(ws_dir, uid, gid)
                 try:
                     os.chmod(ws_dir, 0o700)
                 except OSError:
                     logger.debug("could not chmod workspace %s", ws_dir, exc_info=True)
+            self._initialized.add(user_id)
             self._stopped.discard(user_id)
         return WorkspaceInfo(
             user_id=user_id,
@@ -485,12 +524,25 @@ class LocalWorkspaceManager(WorkspaceManager):
     def touch_active(self, user_id: int) -> None:
         return None
 
-    def _write_creds_files(self, workspace_dir: pathlib.Path, secrets: dict[str, str]) -> None:
+    def _write_creds_files(
+        self,
+        workspace_dir: pathlib.Path,
+        secrets: dict[str, str],
+        creds: tuple[int, int] | None,
+    ) -> None:
         """Write API keys to .nixor_creds (0400) and a sitecustomize.py loader (0400)
         into .nixor_site/ inside the workspace. Both are regenerated on every terminal
-        open so they stay in sync if keys rotate. The student can *read* the file with
-        deliberate effort (it's their uid), but it won't appear in `env`/`printenv`."""
+        open so they stay in sync if keys rotate.
+
+        These files are chowned to the student's sandbox uid here, at write time, so the
+        student's own Python (running as that uid) can read them. This must NOT rely on a
+        later full-tree chown — that pass is now one-time and prunes hidden dirs — or the
+        keys would intermittently fail to load (a cause of the erratic behaviour)."""
         try:
+            def _own(path: pathlib.Path) -> None:
+                if creds is not None:
+                    self._chown_path(path, creds[0], creds[1])
+
             creds_path = workspace_dir / ".nixor_creds"
             lines = [
                 "# Sandbox credentials — treat like a password, do not share\n",
@@ -499,6 +551,7 @@ class LocalWorkspaceManager(WorkspaceManager):
             lines += [f"{k}={v}\n" for k, v in sorted(secrets.items())]
             creds_path.write_text("".join(lines), encoding="utf-8")
             creds_path.chmod(0o400)
+            _own(creds_path)
 
             site_dir = workspace_dir / ".nixor_site"
             site_dir.mkdir(exist_ok=True)
@@ -519,6 +572,8 @@ class LocalWorkspaceManager(WorkspaceManager):
             )
             loader.chmod(0o400)
             site_dir.chmod(0o500)  # traversable but not listable
+            _own(loader)
+            _own(site_dir)
         except OSError:
             logger.warning("Could not write credentials files to workspace %s", workspace_dir, exc_info=True)
 
@@ -579,7 +634,7 @@ class LocalWorkspaceManager(WorkspaceManager):
         secrets: dict[str, str] = {
             k: v for k in _SECRET_KEYS if (v := os.environ.get(k, ""))
         }
-        self._write_creds_files(cwd, secrets)
+        self._write_creds_files(cwd, secrets, creds)
 
         # .nixor_site/ lives inside the workspace; sitecustomize.py there is picked up
         # by any Python interpreter spawned from this shell.

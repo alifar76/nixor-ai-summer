@@ -158,6 +158,13 @@ class _CommandGuard:
         return blocked, reason
 
 
+def _authenticate(token: str):
+    """Resolve the websocket's user from its token. Synchronous (opens a DB session); the
+    caller runs it in a worker thread so it never blocks the event loop."""
+    with Session(engine) as session:
+        return user_from_token_value(token, session)
+
+
 @router.websocket("/api/terminal")
 async def terminal_ws(
     websocket: WebSocket,
@@ -165,16 +172,17 @@ async def terminal_ws(
     cols: int = Query(80),
     rows: int = Query(24),
 ) -> None:
-    # Authenticate from the query-param token.
-    with Session(engine) as session:
-        user = user_from_token_value(token, session)
+    loop = asyncio.get_running_loop()
+    # Authenticate from the query-param token. Run the (synchronous) DB lookup in a worker
+    # thread so a slow or write-locked SQLite read can't stall the event loop — a stalled
+    # loop would freeze every other connected terminal's I/O at once.
+    user = await loop.run_in_executor(_PTY_IO, _authenticate, token)
     if user is None:
         await websocket.close(code=4401)  # unauthorized
         return
 
     await websocket.accept()
 
-    loop = asyncio.get_running_loop()
     term = None
     reader_alive = True
     guard = _CommandGuard()
