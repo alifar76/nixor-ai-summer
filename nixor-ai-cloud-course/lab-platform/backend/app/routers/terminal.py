@@ -18,6 +18,8 @@ import json
 import logging
 import re
 import shlex
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from sqlmodel import Session
@@ -29,6 +31,16 @@ from ..workspaces import manager
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["terminal"])
+
+# Dedicated thread pool for SHORT blocking PTY ops (open_terminal, sendall). These must NOT
+# run on the event loop's default executor: that pool is small (~min(32, cpu+4)) and is
+# also where every terminal's reader would otherwise live. Each reader blocks in recv() for
+# the whole session, so parking readers on a shared bounded pool exhausts it once enough
+# students connect and wedges ALL terminals (classroom-wide hang). Readers now get their
+# own dedicated thread per connection (see terminal_ws); this pool handles only the quick
+# open/write calls and is sized generously so a burst of logins never stalls.
+_PTY_IO = ThreadPoolExecutor(max_workers=128, thread_name_prefix="pty-io")
+
 _BLOCK_RE = re.compile(settings.terminal_block_patterns, re.IGNORECASE)
 _ANSI_CSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 _PASTE_MARKER_RE = re.compile(r"(?:\x1b)?\[\s*20[01]~")
@@ -168,7 +180,7 @@ async def terminal_ws(
     guard = _CommandGuard()
 
     try:
-        term = await loop.run_in_executor(None, manager.open_terminal, user.id, cols, rows)
+        term = await loop.run_in_executor(_PTY_IO, manager.open_terminal, user.id, cols, rows)
     except Exception as exc:
         logger.exception("Failed to open terminal for user %s", user.id)
         await websocket.send_bytes(f"\r\n\x1b[31mCould not start your sandbox: {exc}\x1b[0m\r\n".encode())
@@ -193,7 +205,11 @@ async def terminal_ws(
             reader_alive = False
             asyncio.run_coroutine_threadsafe(_safe_close(websocket), loop)
 
-    reader_task = loop.run_in_executor(None, reader)
+    # One dedicated thread per connection — NOT the shared pool — because this thread
+    # blocks in recv() for the whole session. Pooling it would exhaust the executor and
+    # hang every terminal once enough students connect.
+    reader_thread = threading.Thread(target=reader, name=f"pty-reader-{user.id}", daemon=True)
+    reader_thread.start()
 
     try:
         while True:
@@ -214,9 +230,9 @@ async def terminal_ws(
                         # Characters are forwarded keystroke-by-keystroke, so bash already
                         # has the dangerous command buffered by the time Enter arrives.
                         # Without this, a bare Enter on the next keypress re-executes it.
-                        await loop.run_in_executor(None, sock.sendall, b"\x03")
+                        await loop.run_in_executor(_PTY_IO, sock.sendall, b"\x03")
                         continue
-                await loop.run_in_executor(None, sock.sendall, data.encode("utf-8"))
+                await loop.run_in_executor(_PTY_IO, sock.sendall, data.encode("utf-8"))
             elif mtype == "resize":
                 c = int(payload.get("cols", cols))
                 r = int(payload.get("rows", rows))
