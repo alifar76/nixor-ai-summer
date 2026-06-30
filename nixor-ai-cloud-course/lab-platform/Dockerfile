@@ -46,6 +46,16 @@ WORKDIR /app
 COPY backend/requirements.txt backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt
 
+# Pre-install the STUDENT app's dependencies into the image's system site-packages. Without
+# this, every student's `pip install -r requirements.txt` in the terminal downloads ~0.5 GB
+# (streamlit + pyarrow/pandas/numpy/...) into their per-student ~/.local, which fills the
+# shared workspace volume and fails with "[Errno 28] No space left on device:
+# '/workspace/.local'". Pre-installed here, pip reports "Requirement already satisfied" and
+# writes nothing to .local. System site-packages live under /usr, which is bind-mounted
+# read-only into every terminal jail, so the packages import fine inside the sandbox too.
+COPY student-app/requirements.txt student-app/requirements.txt
+RUN pip install --no-cache-dir -r student-app/requirements.txt
+
 # App code + course assets the backend serves / seeds workspaces from.
 COPY backend/ backend/
 COPY course-content/ course-content/
