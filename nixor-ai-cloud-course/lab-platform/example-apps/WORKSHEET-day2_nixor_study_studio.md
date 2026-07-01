@@ -2,14 +2,6 @@
 
 **Time:** ~60 minutes · **You will:** trace how an AI feature works end‑to‑end, route tasks to different models, engineer prompts, validate model JSON, track real cost, and ship a brand‑new feature.
 
-### Before you start
-1. Open `day2_nixor_study_studio.py` in the editor.
-2. In the terminal, run it:
-   ```bash
-   streamlit run day2_nixor_study_studio.py --server.port 8501
-   ```
-3. Click through all six tabs (Explain, Exam Coach, Quiz, Feedback, Planner, Compare). Watch the little caption under each answer — it tells you **which model** replied, **how many tokens**, and the **rupee cost**. Watch the **💰 Session cost** in the sidebar climb.
-
 Each task: 🎯 goal · 🛠️ do · 🧭 guided steps · 💡 concept.
 
 ---

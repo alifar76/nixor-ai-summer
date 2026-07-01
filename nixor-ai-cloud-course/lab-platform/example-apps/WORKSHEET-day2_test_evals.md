@@ -2,16 +2,6 @@
 
 **Time:** ~60 minutes · **You will:** run real AI model evaluations, edit the grader, reason about cost, and learn how "which model is best?" is actually measured.
 
-### Before you start
-1. Open `day2_test_evals.py` in the editor.
-2. In the terminal, run it:
-   ```bash
-   streamlit run day2_test_evals.py --server.port 8501
-   ```
-3. Your four models are already wired up: **GPT‑5.5** lives on your *Azure OpenAI* resource; **Grok‑4.3, DeepSeek‑V4‑Pro, Mistral‑Medium‑3.5** live on your *Foundry* resource. You don't touch any keys — they're injected for you.
-
-> After each task: **save the file**, and Streamlit will show a "Rerun" button (top‑right). Click it to see your change.
-
 Each task below has: 🎯 the goal · 🛠️ what to do · 🧭 guided steps · 💡 the concept.
 
 ---
