@@ -56,14 +56,16 @@ MODELS = {
     "Mistral-Medium-3.5": (os.environ.get("MODEL_MISTRAL_MEDIUM_35_DEPLOYMENT", "mstr-med35"), FOUNDRY_EP, FOUNDRY_KEY),
 }
 
-# Placeholder prices in USD per 1,000,000 tokens. These are NOT real numbers —
-# students should replace them with the actual Azure prices for each deployment
-# (the app lets you edit them live in the Benchmark tab).
+# Azure retail (list) prices in USD per 1,000,000 tokens, pulled from the Azure
+# Retail Prices API for these deployments (GlobalStandard token meters).
+# NOTE: actual billed rate can differ under sponsorship/contract credits, discounts,
+# or taxes; cached / batch / provisioned meters are priced separately. Still
+# editable live in the Benchmark tab.
 DEFAULT_PRICING = {
-    "GPT-5.5": {"input": 5.00, "output": 15.00},
-    "Grok-4.3": {"input": 3.00, "output": 15.00},
-    "DeepSeek-V4-Pro": {"input": 0.50, "output": 1.50},
-    "Mistral-Medium-3.5": {"input": 0.40, "output": 2.00},
+    "GPT-5.5": {"input": 1.25, "output": 10.00},
+    "Grok-4.3": {"input": 1.25, "output": 2.50},
+    "DeepSeek-V4-Pro": {"input": 1.74, "output": 3.48},
+    "Mistral-Medium-3.5": {"input": 1.50, "output": 7.50},
 }
 DEFAULT_USD_PKR = 278.0  # rough rate; editable in the UI
 
@@ -89,7 +91,7 @@ def extract_numbers(text):
 
 def _normalize(s):
     """Lowercase, trim, and strip surrounding punctuation/quotes for exact matching."""
-    return (s or "").strip().lower().strip(".,!?;:'\"` ").strip()
+    return (s or "").strip().lower().strip(".,!?;:'\"`​ ").strip()
 
 
 @dataclass
@@ -441,8 +443,9 @@ def render_benchmark(settings):
 
         # --- editable pricing (live-recomputes cost without re-running) ---
         st.markdown("#### 💵 Pricing")
-        st.caption("Placeholder prices in USD per 1M tokens — replace with real Azure "
-                   "prices. Cost updates instantly; no need to re-run the benchmark.")
+        st.caption("Azure retail list prices (USD per 1M tokens), from the Retail "
+                   "Prices API. Editable — your billed rate may differ under "
+                   "credits/discounts. Cost updates instantly; no re-run needed.")
         price_base = pd.DataFrame([{
             "Model": l,
             "Input $/1M": DEFAULT_PRICING.get(l, {}).get("input", 1.0),
